@@ -3,6 +3,15 @@ import requests
 from geopy.distance import geodesic
 import pandas as pd
 import pydeck as pdk
+import streamlit as st
+
+password = st.secrets["app_password"]
+
+user_input = st.text_input("Entrez le mot de passe :", type="password")
+
+if user_input != password:
+    st.warning("Mot de passe incorrect")
+    st.stop()
 
 st.set_page_config(page_title="Zone de Chalandise", layout="wide")
 
@@ -31,7 +40,7 @@ def load_communes():
 
 communes_df = load_communes()
 
-st.markdown("<h1 style='color:#c82832;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#ff002d;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
 # --- Sélection de la ville avec autocomplétion ---
 ville_input = st.selectbox(
