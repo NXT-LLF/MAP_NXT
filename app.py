@@ -7,6 +7,8 @@ import unicodedata
 import numpy as np
 
 # --- MOT DE PASSE ---
+import streamlit as st
+
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -15,7 +17,7 @@ if not st.session_state.authenticated:
     user_input = st.text_input("Entrez le mot de passe :", type="password")
     if user_input == password:
         st.session_state.authenticated = True
-        st.experimental_rerun()
+        st.success("Mot de passe validé ! Rafraîchis la page si besoin.")
     else:
         if user_input:
             st.warning("Mot de passe incorrect")
