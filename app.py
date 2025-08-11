@@ -8,13 +8,11 @@ from unidecode import unidecode
 
 st.markdown("<h1 style='color:#c82832;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
-# Fonction pour normaliser les noms pour autocomplétion (supprime accents et tirets)
 def normalize_name(name):
     name = name.lower().replace("-", " ")
     name = unidecode(name)
     return name
 
-# Fonction pour obtenir les coordonnées d’une ville
 def get_commune_info(ville_input):
     url = f"https://geo.api.gouv.fr/communes?nom={ville_input}&fields=nom,code,codePostal,centre&format=json&geometry=centre"
     r = requests.get(url)
@@ -22,14 +20,17 @@ def get_commune_info(ville_input):
     if not data:
         return None
     commune = data[0]
+    # Gestion du code postal
+    cp = commune.get("codePostal", "")
+    if isinstance(cp, list):
+        cp = cp[0] if cp else ""
     return {
         "nom": commune["nom"],
-        "code_postal": commune.get("codePostal", ""),
+        "code_postal": cp,
         "latitude": commune["centre"]["coordinates"][1],
         "longitude": commune["centre"]["coordinates"][0]
     }
 
-# Fonction pour obtenir toutes les communes de France (coordonnées + code postal)
 @st.cache_data
 def get_all_communes():
     url = "https://geo.api.gouv.fr/communes?fields=nom,code,codePostal,centre&format=json&geometry=centre"
@@ -40,12 +41,15 @@ def get_all_communes():
         try:
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
+            cp = c.get("codePostal", "")
+            if isinstance(cp, list):
+                cp = cp[0] if cp else ""
             cleaned.append({
                 "nom": c["nom"],
-                "code_postal": c.get("codePostal", ""),
+                "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": f"{c['nom']} - {c.get('codePostal', '')}"
+                "label": f"{c['nom']} - {cp}"
             })
         except:
             continue
@@ -53,7 +57,7 @@ def get_all_communes():
 
 def compute_circle(lon, lat, radius_m, nb_points=50):
     coords = []
-    R = 6371000  # rayon Terre en mètres
+    R = 6371000
     for i in range(nb_points):
         angle = 2 * math.pi * i / nb_points
         dx = radius_m * math.cos(angle)
@@ -67,10 +71,8 @@ def compute_circle(lon, lat, radius_m, nb_points=50):
 
 communes_df = get_all_communes()
 
-# Recherche et sélection regroupées
 search_input = st.text_input("Rechercher la ville de référence :", "Paris")
 
-# Normalisation pour trouver la correspondance même sans tirets/accents
 normalized_search = normalize_name(search_input)
 matches = communes_df[communes_df["nom"].apply(lambda x: normalize_name(x)).str.contains(normalized_search)]
 if not matches.empty:
@@ -82,7 +84,6 @@ else:
 
 ville_input = st.selectbox("Sélectionnez la ville :", options, index=default_index)
 
-# Extrait nom et code postal de la sélection
 selected_nom = ville_input.split(" - ")[0]
 selected_cp = ville_input.split(" - ")[1]
 
@@ -99,7 +100,6 @@ if st.button("Lancer la recherche"):
 
         ref_coords = (ref['latitude'], ref['longitude'])
 
-        # Calcul des distances
         def calc_distance(row):
             return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
 
@@ -110,20 +110,21 @@ if st.button("Lancer la recherche"):
 
         st.success(f"{len(communes_filtrees)} villes trouvées dans un rayon de {rayon} km autour de {ref['nom']} ({ref['code_postal']})")
 
-        # Affichage du tableau sans index, sans colonne inutile, avec code postal visible
-        st.dataframe(communes_filtrees[["nom", "code_postal", "distance_km"]].rename(columns={"nom": "Ville", "code_postal": "Code Postal", "distance_km": "Distance (km)"}), use_container_width=True)
+        st.dataframe(
+            communes_filtrees[["nom", "code_postal", "distance_km"]]
+            .rename(columns={"nom": "Ville", "code_postal": "Code Postal", "distance_km": "Distance (km)"})
+            , use_container_width=True
+        )
 
-        # Préparation du texte à copier : uniquement codes postaux séparés par virgule et espace
         codes_postaux_str = ", ".join(communes_filtrees["code_postal"].tolist())
         st.text_area("Codes postaux (copier/coller) :", value=codes_postaux_str, height=100)
 
-        # Carte
         st.subheader("Carte interactive")
         circle_layer = pdk.Layer(
             "PolygonLayer",
             data=[{
                 "polygon": compute_circle(ref_coords[1], ref_coords[0], rayon * 1000, 50),
-                "fill_color": [100, 149, 237, 50],  # bleu clair transparent
+                "fill_color": [100, 149, 237, 50],
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -135,8 +136,8 @@ if st.button("Lancer la recherche"):
             "ScatterplotLayer",
             data=communes_filtrees,
             get_position='[longitude, latitude]',
-            get_radius=500,
-            get_fill_color=[255, 0, 45, 160],  # rouge vif
+            get_radius=300,
+            get_fill_color=[255, 0, 45, 160],
             pickable=True,
         )
         view_state = pdk.ViewState(
