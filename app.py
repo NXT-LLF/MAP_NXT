@@ -62,7 +62,7 @@ communes_df = get_all_communes()
 ville_input = st.selectbox(
     "Rechercher la ville de référence :",
     options=communes_df["label"].tolist(),
-    index=int(communes_df[communes_df["nom"].str.lower() == "Paris"].index[0])
+    index=int(communes_df[communes_df["nom"].str.lower() == "paris"].index[0])
 )
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
