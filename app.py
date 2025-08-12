@@ -2,8 +2,8 @@ import streamlit as st
 import requests
 from geopy.distance import geodesic
 import pandas as pd
-import pydeck as pdk
 import math
+import pydeck as pdk
 from unidecode import unidecode
 from fuzzywuzzy import process
 
@@ -48,24 +48,11 @@ def create_circle_polygon(center, radius_m, points=100):
         coords.append([lon + delta_lon, lat + delta_lat])
     return coords
 
-def compute_distances(df, ref_coords):
-    total = len(df)
-    distances = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    for i, row in df.iterrows():
-        distances.append(geodesic(ref_coords, (row["latitude"], row["longitude"])).km)
-        progress_bar.progress((i + 1) / total)
-        status_text.text(f"Calcul en cours... {(i + 1) * 100 // total}%")
-    progress_bar.empty()
-    status_text.empty()
-    return distances
-
-# Chargement des communes
 communes_df = get_all_communes()
 
 search_input = st.text_input("Tapez le nom de la ville de référence :", value="Paris")
 
+# Recherche floue
 if search_input:
     matches = process.extract(search_input, communes_df["nom"], limit=5)
     best_match = matches[0][0] if matches else search_input
@@ -90,8 +77,21 @@ ref_coords = (ref_data["latitude"], ref_data["longitude"])
 
 df = communes_df.copy()
 
-# Calcul des distances avec la barre de progression
-distances = compute_distances(df, ref_coords)
+# Calcul distances avec barre de progression
+total = len(df)
+distances = []
+progress_bar = st.progress(0)
+status_text = st.empty()
+
+for i, row in df.iterrows():
+    dist = geodesic(ref_coords, (row["latitude"], row["longitude"])).km
+    distances.append(dist)
+    progress_bar.progress((i + 1) / total)
+    status_text.text(f"Calcul en cours... {(i + 1) * 100 // total}%")
+
+progress_bar.empty()
+status_text.empty()
+
 df["distance_km"] = distances
 communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
 
