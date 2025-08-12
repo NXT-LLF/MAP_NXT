@@ -1,7 +1,7 @@
-streamlit
-requests
+rapidfuzz
 geopy
-pandas
-numpy
+streamlit
 pydeck
 unidecode
+pandas
+requests
