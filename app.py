@@ -7,6 +7,8 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
 
+st.cache_data.clear()
+
 # Titre avec couleur rouge foncé
 st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
 
