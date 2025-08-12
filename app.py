@@ -2,10 +2,12 @@ import streamlit as st
 import requests
 from geopy.distance import geodesic
 import pandas as pd
-import math
 import pydeck as pdk
+import math
 from unidecode import unidecode
 from fuzzywuzzy import process
+
+st.set_page_config(layout="wide")
 
 st.markdown("<h1 style='color:#ff002d;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
@@ -19,22 +21,28 @@ def get_all_communes():
         try:
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
+
+            # Gestion codePostal et codesPostaux
             if "codePostal" in c and c["codePostal"]:
                 cp = c["codePostal"]
             elif "codesPostaux" in c and c["codesPostaux"]:
                 cp = ", ".join(c["codesPostaux"])
             else:
                 cp = ""
+
             cleaned.append({
                 "nom": c["nom"],
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": f'{c["nom"]}'
+                "label": c["nom"]
             })
         except:
             continue
     return pd.DataFrame(cleaned)
+
+def normalize_text(text):
+    return unidecode(text.lower().replace("-", " ").strip())
 
 def create_circle_polygon(center, radius_m, points=100):
     lat, lon = center
@@ -50,53 +58,56 @@ def create_circle_polygon(center, radius_m, points=100):
 
 communes_df = get_all_communes()
 
-search_input = st.text_input("Tapez le nom de la ville de référence :", value="Paris")
+# Normalize city names for search
+communes_df["label_norm"] = communes_df["label"].apply(normalize_text)
+city_names_norm = communes_df["label_norm"].tolist()
+city_names = communes_df["label"].tolist()
 
-# Recherche floue
-if search_input:
-    matches = process.extract(search_input, communes_df["nom"], limit=5)
-    best_match = matches[0][0] if matches else search_input
-else:
-    best_match = "Paris"
+st.subheader("Recherche ville de référence (recherche floue, insensible à la casse, accents, tirets)")
 
-try:
-    default_index = int(communes_df[communes_df["nom"].str.lower() == best_match.lower()].index[0])
-except:
-    default_index = 0
+input_city_raw = st.text_input("Entrez le nom de la ville : ", "paris")
+input_city_norm = normalize_text(input_city_raw)
 
-ville_input = st.selectbox(
-    "Ou sélectionnez dans la liste :",
-    options=communes_df["label"].tolist(),
-    index=default_index
-)
+# Recherche floue avec fuzzywuzzy, on propose les 10 meilleures correspondances
+choices = process.extract(input_city_norm, city_names_norm, limit=10, scorer=None)
+
+# choices est une liste de tuples (match, score)
+# On affiche seulement les noms exacts d'origine correspondants aux meilleurs scores
+best_matches = [city_names[city_names_norm.index(match[0])] for match in choices]
+
+selected_city = st.selectbox("Sélectionnez la ville correcte :", best_matches)
+
+# Récupération des données de la ville sélectionnée
+ref_data = communes_df[communes_df["label"] == selected_city].iloc[0]
+
+ref_coords = (ref_data["latitude"], ref_data["longitude"])
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 
-ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
-ref_coords = (ref_data["latitude"], ref_data["longitude"])
+progress_bar = st.progress(0)
 
 df = communes_df.copy()
 
-# Calcul distances avec barre de progression
-total = len(df)
+def calc_distance(row):
+    return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
+
+# Calcul distance avec progression
 distances = []
-progress_bar = st.progress(0)
-status_text = st.empty()
-
+total = len(df)
 for i, row in df.iterrows():
-    dist = geodesic(ref_coords, (row["latitude"], row["longitude"])).km
-    distances.append(dist)
-    progress_bar.progress((i + 1) / total)
-    status_text.text(f"Calcul en cours... {(i + 1) * 100 // total}%")
-
-progress_bar.empty()
-status_text.empty()
+    distances.append(calc_distance(row))
+    if i % 100 == 0:
+        progress_bar.progress(min(i / total, 1.0))
 
 df["distance_km"] = distances
+
 communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
 
+progress_bar.progress(1.0)
 st.success(f"{len(communes_filtrees)} villes trouvées.")
 
+# Carte
+st.subheader("Carte interactive")
 circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
 circle_layer = pdk.Layer(
     "PolygonLayer",
@@ -137,6 +148,8 @@ st.pydeck_chart(pdk.Deck(
     tooltip={"text": "{nom}"}
 ))
 
+# Sélection villes à afficher
+st.subheader("Cochez les villes à afficher sur la carte")
 selected_villes = st.multiselect(
     "Sélectionnez les villes à afficher",
     options=communes_filtrees["label"],
@@ -145,9 +158,12 @@ selected_villes = st.multiselect(
 
 final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
 
+# Tableau avec CP
 st.subheader("Résultats")
 st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
+# Codes postaux à copier
 codes_postaux = final_villes["code_postal"].tolist()
 resultat_texte = ", ".join(codes_postaux)
+
 st.text_area("Zone de chalandise :", resultat_texte, height=100)
