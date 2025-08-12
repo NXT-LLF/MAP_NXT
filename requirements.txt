@@ -4,5 +4,3 @@ geopy
 pandas
 pydeck
 unidecode
-fuzzywuzzy
-python-Levenshtein
