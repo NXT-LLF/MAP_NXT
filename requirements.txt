@@ -1,7 +1,6 @@
 streamlit
+requests
 geopy
 pandas
-requests
+pydeck
 unidecode
-streamlit-folium
-folium
