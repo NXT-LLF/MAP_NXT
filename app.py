@@ -5,6 +5,7 @@ import pandas as pd
 import pydeck as pdk
 import math
 from unidecode import unidecode
+from rapidfuzz import process, fuzz
 
 st.markdown("<h1 style='color:#ff002d;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
@@ -17,7 +18,6 @@ def get_commune_info(ville_input):
         return None
     commune = data[0]
 
-    # Récupération du code postal unique ou multiple
     if "codePostal" in commune and commune["codePostal"]:
         cp = commune["codePostal"]
     elif "codesPostaux" in commune and commune["codesPostaux"]:
@@ -43,7 +43,6 @@ def get_all_communes():
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
 
-            # Gestion codePostal et codesPostaux
             if "codePostal" in c and c["codePostal"]:
                 cp = c["codePostal"]
             elif "codesPostaux" in c and c["codesPostaux"]:
@@ -56,7 +55,9 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": f'{c["nom"]}'  # Ici on enlève le code postal
+                # Ajout d'une version "nettoyée" du label pour faciliter la recherche
+                "label": c["nom"],
+                "label_clean": unidecode(c["nom"].lower().replace("-", " ").strip())
             })
         except:
             continue
@@ -76,98 +77,121 @@ def create_circle_polygon(center, radius_m, points=100):
 
 communes_df = get_all_communes()
 
-# Sélection ville de référence
-ville_input = st.selectbox(
-    "Rechercher la ville de référence :",
-    options=communes_df["label"].tolist(),
-    index=int(communes_df[communes_df["nom"].str.lower() == "paris"].index[0])
-)
+# Focus automatique sur la barre de recherche avec st.experimental_rerun astuce minimale :
+# (on peut forcer le rerun si nécessaire, mais ici on garde simple)
 
-rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
+# Entrée utilisateur pour recherche avec focus
+search_input = st.text_input("Rechercher une ville (approx.) :", value="", key="ville_recherche", placeholder="Ex: Saint-Etienne, marseille, nice...")
 
-# Extraire nom et coordonnées
-ref_nom = ville_input
-ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
+ville_input = None
 
-ref = {
-    "nom": ref_nom,
-    "code_postal": ref_data["code_postal"],
-    "latitude": ref_data["latitude"],
-    "longitude": ref_data["longitude"]
-}
+def normalize_str(s):
+    return unidecode(s.lower().replace("-", " ").strip())
 
-ref_coords = (ref['latitude'], ref['longitude'])
+if search_input:
+    search_clean = normalize_str(search_input)
 
-with st.spinner('Calcul en cours...'):
-    df = communes_df.copy()
+    # On cherche la meilleure correspondance sur la colonne nettoyée
+    choices = communes_df["label_clean"].tolist()
+    results = process.extract(
+        search_clean,
+        choices,
+        scorer=fuzz.WRatio,
+        limit=10
+    )
+    suggestions = [communes_df.iloc[choices.index(res[0])]["label"] for res in results if res[1] >= 50]
 
-    def calc_distance(row):
-        return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
+    if suggestions:
+        ville_input = st.selectbox("Suggestions :", suggestions)
+    else:
+        st.warning("Aucune correspondance trouvée.")
+else:
+    st.info("Veuillez saisir une ville pour commencer la recherche.")
 
-    df["distance_km"] = df.apply(calc_distance, axis=1)
-    communes_filtrees = df[(df["distance_km"] <= rayon)]
-    communes_filtrees = communes_filtrees.sort_values("distance_km")
+if ville_input:
+    rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 
-st.success(f"{len(communes_filtrees)} villes trouvées.")
+    ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 
-# Carte
-st.subheader("Carte interactive")
-circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
-circle_layer = pdk.Layer(
-    "PolygonLayer",
-    data=[{
-        "polygon": circle_polygon,
-        "fill_color": [173, 216, 230, 50],
-        "line_color": [173, 216, 230, 150],
-    }],
-    get_polygon="polygon",
-    get_fill_color="fill_color",
-    get_line_color="line_color",
-    pickable=False,
-    stroked=True,
-    filled=True,
-    extruded=False,
-)
+    ref = {
+        "nom": ville_input,
+        "code_postal": ref_data["code_postal"],
+        "latitude": ref_data["latitude"],
+        "longitude": ref_data["longitude"]
+    }
 
-scatter_layer = pdk.Layer(
-    "ScatterplotLayer",
-    data=communes_filtrees,
-    get_position='[longitude, latitude]',
-    get_radius=500,
-    get_fill_color=[255, 0, 45, 180],
-    pickable=True,
-)
+    ref_coords = (ref['latitude'], ref['longitude'])
 
-view_state = pdk.ViewState(
-    latitude=ref["latitude"],
-    longitude=ref["longitude"],
-    zoom=9,
-    pitch=0
-)
+    with st.spinner('Calcul en cours...'):
+        df = communes_df.copy()
 
-st.pydeck_chart(pdk.Deck(
-    layers=[circle_layer, scatter_layer],
-    initial_view_state=view_state,
-    map_style='light',
-    tooltip={"text": "{nom}"}
-))
+        def calc_distance(row):
+            return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
 
-# Sélection villes à afficher
-st.subheader("Cochez les villes à afficher sur la carte")
-selected_villes = st.multiselect(
-    "Sélectionnez les villes à afficher",
-    options=communes_filtrees["label"],
-    default=communes_filtrees["label"].tolist()
-)
+        df["distance_km"] = df.apply(calc_distance, axis=1)
+        communes_filtrees = df[(df["distance_km"] <= rayon)]
+        communes_filtrees = communes_filtrees.sort_values("distance_km")
 
-final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
+    st.success(f"{len(communes_filtrees)} villes trouvées.")
 
-# Tableau avec CP
-st.subheader("Résultats")
-st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
+    # Carte
+    st.subheader("Carte interactive")
+    circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
+    circle_layer = pdk.Layer(
+        "PolygonLayer",
+        data=[{
+            "polygon": circle_polygon,
+            "fill_color": [173, 216, 230, 50],
+            "line_color": [173, 216, 230, 150],
+        }],
+        get_polygon="polygon",
+        get_fill_color="fill_color",
+        get_line_color="line_color",
+        pickable=False,
+        stroked=True,
+        filled=True,
+        extruded=False,
+    )
 
-# Codes postaux à copier
-codes_postaux = final_villes["code_postal"].tolist()
-resultat_texte = ", ".join(codes_postaux)
+    scatter_layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=communes_filtrees,
+        get_position='[longitude, latitude]',
+        get_radius=500,
+        get_fill_color=[255, 0, 45, 180],
+        pickable=True,
+    )
 
-st.text_area("Zone de chalandise :", resultat_texte, height=100)
+    view_state = pdk.ViewState(
+        latitude=ref["latitude"],
+        longitude=ref["longitude"],
+        zoom=9,
+        pitch=0
+    )
+
+    st.pydeck_chart(pdk.Deck(
+        layers=[circle_layer, scatter_layer],
+        initial_view_state=view_state,
+        map_style='light',
+        tooltip={"text": "{nom}"}
+    ))
+
+    # Sélection villes à afficher
+    st.subheader("Cochez les villes à afficher sur la carte")
+    selected_villes = st.multiselect(
+        "Sélectionnez les villes à afficher",
+        options=communes_filtrees["label"],
+        default=communes_filtrees["label"].tolist()
+    )
+
+    final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
+
+    # Tableau avec CP
+    st.subheader("Résultats")
+    st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
+
+    # Codes postaux à copier
+    codes_postaux = final_villes["code_postal"].tolist()
+    resultat_texte = ", ".join(codes_postaux)
+
+    st.text_area("Zone de chalandise :", resultat_texte, height=100)
