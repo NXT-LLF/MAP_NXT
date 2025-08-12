@@ -55,7 +55,9 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": c["nom"]
+                # Ajout d'une version "nettoyée" du label pour faciliter la recherche
+                "label": c["nom"],
+                "label_clean": unidecode(c["nom"].lower().replace("-", " ").strip())
             })
         except:
             continue
@@ -75,19 +77,29 @@ def create_circle_polygon(center, radius_m, points=100):
 
 communes_df = get_all_communes()
 
-# Recherche ville avec recherche floue
-search_input = st.text_input("Rechercher une ville (approx.) :", value="")
+# Focus automatique sur la barre de recherche avec st.experimental_rerun astuce minimale :
+# (on peut forcer le rerun si nécessaire, mais ici on garde simple)
+
+# Entrée utilisateur pour recherche avec focus
+search_input = st.text_input("Rechercher une ville (approx.) :", value="", key="ville_recherche", placeholder="Ex: Saint-Etienne, marseille, nice...")
 
 ville_input = None
 
+def normalize_str(s):
+    return unidecode(s.lower().replace("-", " ").strip())
+
 if search_input:
+    search_clean = normalize_str(search_input)
+
+    # On cherche la meilleure correspondance sur la colonne nettoyée
+    choices = communes_df["label_clean"].tolist()
     results = process.extract(
-        search_input,
-        communes_df["label"].tolist(),
+        search_clean,
+        choices,
         scorer=fuzz.WRatio,
         limit=10
     )
-    suggestions = [res[0] for res in results if res[1] >= 50]
+    suggestions = [communes_df.iloc[choices.index(res[0])]["label"] for res in results if res[1] >= 50]
 
     if suggestions:
         ville_input = st.selectbox("Suggestions :", suggestions)
