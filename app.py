@@ -122,15 +122,23 @@ if ville_input:
 
     ref_coords = (ref['latitude'], ref['longitude'])
 
-    with st.spinner('Calcul en cours...'):
-        df = communes_df.copy()
+    df = communes_df.copy()
 
-        def calc_distance(row):
-            return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
+progress_bar = st.progress(0)
+total = len(df)
 
-        df["distance_km"] = df.apply(calc_distance, axis=1)
-        communes_filtrees = df[(df["distance_km"] <= rayon)]
-        communes_filtrees = communes_filtrees.sort_values("distance_km")
+distances = []
+for i, row in enumerate(df.itertuples()):
+    dist = geodesic(ref_coords, (row.latitude, row.longitude)).km
+    distances.append(dist)
+    if i % 50 == 0:  # Met à jour la barre toutes les 50 lignes (pour fluidité)
+        progress_bar.progress(min((i+1) / total, 1.0))
+
+df["distance_km"] = distances
+communes_filtrees = df[df["distance_km"] <= rayon]
+communes_filtrees = communes_filtrees.sort_values("distance_km")
+
+progress_bar.progress(1)  # Barre à 100% à la fin
 
     st.success(f"{len(communes_filtrees)} villes trouvées.")
 
