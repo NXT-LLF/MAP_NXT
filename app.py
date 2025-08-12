@@ -56,7 +56,7 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": f'{c["nom"]} ({cp})'
+                "label": f'{c["nom"]}'  # Ici on enlève le code postal
             })
         except:
             continue
@@ -85,15 +85,15 @@ ville_input = st.selectbox(
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 
-# Extraire nom et code postal
-ref_nom = ville_input.split(" (")[0]
-ref_code_postal = ville_input.split(" (")[1][:-1]
+# Extraire nom et coordonnées
+ref_nom = ville_input
+ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 
 ref = {
     "nom": ref_nom,
-    "code_postal": ref_code_postal,
-    "latitude": communes_df.loc[communes_df["label"] == ville_input, "latitude"].values[0],
-    "longitude": communes_df.loc[communes_df["label"] == ville_input, "longitude"].values[0]
+    "code_postal": ref_data["code_postal"],
+    "latitude": ref_data["latitude"],
+    "longitude": ref_data["longitude"]
 }
 
 ref_coords = (ref['latitude'], ref['longitude'])
@@ -149,7 +149,7 @@ st.pydeck_chart(pdk.Deck(
     layers=[circle_layer, scatter_layer],
     initial_view_state=view_state,
     map_style='light',
-    tooltip={"text": "{nom} ({code_postal})"}
+    tooltip={"text": "{nom}"}
 ))
 
 # Sélection villes à afficher
@@ -162,7 +162,7 @@ selected_villes = st.multiselect(
 
 final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
 
-# Tableau
+# Tableau avec CP
 st.subheader("Résultats")
 st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
