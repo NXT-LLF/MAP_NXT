@@ -7,9 +7,8 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
 
-st.cache_data.clear()
+st.cache_data.clear()  # Forcer le rafraîchissement
 
-# Titre avec couleur rouge foncé
 st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
 
 def get_commune_info(ville_input):
@@ -90,12 +89,7 @@ if search_input:
     search_clean = normalize_str(search_input)
 
     choices = communes_df["label_clean"].tolist()
-    results = process.extract(
-        search_clean,
-        choices,
-        scorer=fuzz.WRatio,
-        limit=10
-    )
+    results = process.extract(search_clean, choices, scorer=fuzz.WRatio, limit=10)
     suggestions = [communes_df.iloc[choices.index(res[0])]["label"] for res in results if res[1] >= 50]
 
     if suggestions:
@@ -106,8 +100,7 @@ else:
     st.info("Veuillez saisir une ville pour commencer la recherche.")
 
 if ville_input:
-    # Rayon par défaut 1 km
-    rayon = st.slider("Rayon de recherche (km) :", 1, 50, 1)
+    rayon = st.slider("Rayon de recherche (km) :", 1, 50, 1)  # PAR DÉFAUT À 1 KM
 
     ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 
@@ -127,20 +120,17 @@ if ville_input:
             return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
 
         df["distance_km"] = df.apply(calc_distance, axis=1)
-        communes_filtrees = df[(df["distance_km"] <= rayon)]
-        communes_filtrees = communes_filtrees.sort_values("distance_km")
+        communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
 
     st.success(f"{len(communes_filtrees)} villes trouvées.")
 
-    # Carte
-    st.subheader("Carte interactive")
     circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
     circle_layer = pdk.Layer(
         "PolygonLayer",
         data=[{
             "polygon": circle_polygon,
             "fill_color": [173, 216, 230, 50],
-            "line_color": [100, 160, 200, 150],  # Bleu plus foncé
+            "line_color": [100, 160, 200, 150],  # COULEUR PLUS FONCÉE
         }],
         get_polygon="polygon",
         get_fill_color="fill_color",
@@ -173,20 +163,3 @@ if ville_input:
         map_style='light',
         tooltip={"text": "{nom}"}
     ))
-
-    st.subheader("Cochez les villes à afficher sur la carte")
-    selected_villes = st.multiselect(
-        "Sélectionnez les villes à afficher",
-        options=communes_filtrees["label"],
-        default=communes_filtrees["label"].tolist()
-    )
-
-    final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
-
-    st.subheader("Résultats")
-    st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
-
-    codes_postaux = final_villes["code_postal"].tolist()
-    resultat_texte = ", ".join(codes_postaux)
-
-    st.text_area("Zone de chalandise :", resultat_texte, height=100)
