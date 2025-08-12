@@ -170,4 +170,4 @@ st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(dro
 codes_postaux = final_villes["code_postal"].tolist()
 resultat_texte = ", ".join(codes_postaux)
 
-st.text_area("Codes postaux des villes sélectionnées (copiez-collez) :", resultat_texte, height=100)
+st.text_area("Zone de chalandise :", resultat_texte, height=100)
