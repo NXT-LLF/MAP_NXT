@@ -1,3 +1,4 @@
+st.warning("Version du code : 2025-08-12-17h18")
 st.cache_data.clear()
 
 import streamlit as st
