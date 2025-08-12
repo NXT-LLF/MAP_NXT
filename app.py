@@ -8,30 +8,6 @@ from unidecode import unidecode
 
 st.markdown("<h1 style='color:#ff002d;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
-def get_commune_info(ville_input):
-    ville_input = unidecode(ville_input.lower().replace(" ", "-"))
-    url = f"https://geo.api.gouv.fr/communes?nom={ville_input}&fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
-    r = requests.get(url)
-    data = r.json()
-    if not data:
-        return None
-    commune = data[0]
-
-    if "codePostal" in commune and commune["codePostal"]:
-        cp = commune["codePostal"]
-    elif "codesPostaux" in commune and commune["codesPostaux"]:
-        cp = ", ".join(commune["codesPostaux"])
-    else:
-        cp = ""
-
-    return {
-        "nom": commune["nom"],
-        "code_postal": cp,
-        "latitude": commune["centre"]["coordinates"][1],
-        "longitude": commune["centre"]["coordinates"][0]
-    }
-
-@st.cache_data
 def get_all_communes():
     url = "https://geo.api.gouv.fr/communes?fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
     r = requests.get(url)
@@ -54,7 +30,7 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": f'{c["nom"]}'
+                "label": c["nom"]
             })
         except:
             continue
@@ -74,6 +50,7 @@ def create_circle_polygon(center, radius_m, points=100):
 
 communes_df = get_all_communes()
 
+# Sélection ville de référence
 ville_input = st.selectbox(
     "Rechercher la ville de référence :",
     options=communes_df["label"].tolist(),
@@ -82,17 +59,8 @@ ville_input = st.selectbox(
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 
-ref_nom = ville_input
 ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
-
-ref = {
-    "nom": ref_nom,
-    "code_postal": ref_data["code_postal"],
-    "latitude": ref_data["latitude"],
-    "longitude": ref_data["longitude"]
-}
-
-ref_coords = (ref['latitude'], ref['longitude'])
+ref_coords = (ref_data["latitude"], ref_data["longitude"])
 
 with st.spinner('Calcul en cours...'):
     df = communes_df.copy()
@@ -101,11 +69,11 @@ with st.spinner('Calcul en cours...'):
         return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
 
     df["distance_km"] = df.apply(calc_distance, axis=1)
-    communes_filtrees = df[(df["distance_km"] <= rayon)]
-    communes_filtrees = communes_filtrees.sort_values("distance_km")
+    communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
 
 st.success(f"{len(communes_filtrees)} villes trouvées.")
 
+# Carte
 st.subheader("Carte interactive")
 circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
 circle_layer = pdk.Layer(
@@ -134,8 +102,8 @@ scatter_layer = pdk.Layer(
 )
 
 view_state = pdk.ViewState(
-    latitude=ref["latitude"],
-    longitude=ref["longitude"],
+    latitude=ref_coords[0],
+    longitude=ref_coords[1],
     zoom=9,
     pitch=0
 )
@@ -147,40 +115,44 @@ st.pydeck_chart(pdk.Deck(
     tooltip={"text": "{nom}"}
 ))
 
-# --- Gestion ajout manuel de villes ---
-if "villes_ajoutees" not in st.session_state:
-    st.session_state.villes_ajoutees = []
+# Gestion multiselect avec ajout dynamique
 
-nouvelle_ville = st.text_input("Ajouter une ville manuellement (nom exact)")
-
-if st.button("Ajouter la ville"):
-    match = communes_df[communes_df["nom"].str.lower() == nouvelle_ville.strip().lower()]
-    if not match.empty:
-        nom_ville = match.iloc[0]["label"]
-        if nom_ville not in st.session_state.villes_ajoutees:
-            st.session_state.villes_ajoutees.append(nom_ville)
-            st.success(f"Ville '{nom_ville}' ajoutée.")
-        else:
-            st.warning("Cette ville est déjà ajoutée.")
-    else:
-        st.error("Ville non trouvée dans la base.")
-
-options_multiselect = list(communes_filtrees["label"]) + st.session_state.villes_ajoutees
-options_multiselect = list(dict.fromkeys(options_multiselect))
+if "selected_villes" not in st.session_state:
+    st.session_state.selected_villes = communes_filtrees["label"].tolist()
 
 st.subheader("Cochez les villes à afficher sur la carte")
 selected_villes = st.multiselect(
     "Sélectionnez les villes à afficher",
-    options=options_multiselect,
-    default=options_multiselect
+    options=communes_filtrees["label"],
+    default=st.session_state.selected_villes,
+    key="multi"
 )
 
-final_villes = communes_df[communes_df["label"].isin(selected_villes)]
+nouvelle_ville = st.text_input("Ajouter une ville (exactement comme dans la liste)")
 
+if st.button("Ajouter la ville"):
+    if nouvelle_ville in communes_filtrees["label"].values:
+        if nouvelle_ville not in st.session_state.selected_villes:
+            st.session_state.selected_villes.append(nouvelle_ville)
+            st.success(f"Ville '{nouvelle_ville}' ajoutée.")
+        else:
+            st.warning(f"La ville '{nouvelle_ville}' est déjà sélectionnée.")
+    else:
+        st.error(f"La ville '{nouvelle_ville}' n'existe pas dans la liste.")
+
+# Synchroniser la sélection du multiselect avec l'état
+if selected_villes != st.session_state.selected_villes:
+    st.session_state.selected_villes = selected_villes
+
+# Filtrer les villes finales à afficher
+final_villes = communes_filtrees[communes_filtrees["label"].isin(st.session_state.selected_villes)]
+
+# Affichage tableau avec CP
 st.subheader("Résultats")
 st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
+# Codes postaux à copier
 codes_postaux = final_villes["code_postal"].tolist()
 resultat_texte = ", ".join(codes_postaux)
 
-st.text_area("Zone de chalandise :", resultat_texte, height=100)
+st.text_area("Zone de chalandise (codes postaux) :", resultat_texte, height=100)
