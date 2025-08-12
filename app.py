@@ -7,8 +7,11 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
 
+# Titre principal
 st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
+st.warning("Version du code : 2025-08-12-14h50")
 
+# --- Fonctions utilitaires ---
 def get_commune_info(ville_input):
     ville_input = unidecode(ville_input.lower().replace(" ", "-"))
     url = f"https://geo.api.gouv.fr/communes?nom={ville_input}&fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
@@ -74,18 +77,19 @@ def create_circle_polygon(center, radius_m, points=100):
         coords.append([lon + delta_lon, lat + delta_lat])
     return coords
 
+def normalize_str(s):
+    return unidecode(s.lower().replace("-", " ").strip())
+
+# --- Données communes ---
 communes_df = get_all_communes()
 
+# Recherche approximative
 search_input = st.text_input("Rechercher une ville (approx.) :", value="", key="ville_recherche", placeholder="Ex: Saint-Etienne, marseille, nice...")
 
 ville_input = None
 
-def normalize_str(s):
-    return unidecode(s.lower().replace("-", " ").strip())
-
 if search_input:
     search_clean = normalize_str(search_input)
-
     choices = communes_df["label_clean"].tolist()
     results = process.extract(search_clean, choices, scorer=fuzz.WRatio, limit=10)
     suggestions = [communes_df.iloc[choices.index(res[0])]["label"] for res in results if res[1] >= 50]
@@ -122,13 +126,14 @@ if ville_input:
 
     st.success(f"{len(communes_filtrees)} villes trouvées.")
 
+    # Carte Pydeck
     circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
     circle_layer = pdk.Layer(
         "PolygonLayer",
         data=[{
             "polygon": circle_polygon,
             "fill_color": [173, 216, 230, 50],
-            "line_color": [100, 160, 200, 150],  # COULEUR PLUS FONCÉE
+            "line_color": [90, 150, 190, 180],  # plus foncé
         }],
         get_polygon="polygon",
         get_fill_color="fill_color",
@@ -161,3 +166,19 @@ if ville_input:
         map_style='light',
         tooltip={"text": "{nom}"}
     ))
+
+    # Tableau des résultats
+    st.subheader("📋 Tableau des villes")
+    st.dataframe(communes_filtrees[["nom", "code_postal", "distance_km"]])
+
+    # MultiSelect pour choisir les villes affichées en texte
+    selection = st.multiselect(
+        "Sélectionnez les villes à afficher en format texte :",
+        communes_filtrees["nom"].tolist(),
+        default=communes_filtrees["nom"].tolist()
+    )
+
+    if selection:
+        resultat_textuel = "\n".join(selection)
+        st.markdown(f"<pre style='font-size:16px'>{resultat_textuel}</pre>", unsafe_allow_html=True)
+        st.button("📋 Copier dans le presse-papiers", on_click=lambda: st.write("Texte copié !"))
