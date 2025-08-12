@@ -1,3 +1,5 @@
+st.cache_data.clear()
+
 import streamlit as st
 import requests
 from geopy.distance import geodesic
@@ -6,8 +8,6 @@ import pydeck as pdk
 import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
-
-st.cache_data.clear()  # Forcer le rafraîchissement
 
 st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
 
