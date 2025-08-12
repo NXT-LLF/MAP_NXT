@@ -7,6 +7,7 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
 
+# Titre avec couleur rouge foncé
 st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
 
 def get_commune_info(ville_input):
@@ -55,7 +56,6 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                # Ajout d'une version "nettoyée" du label pour faciliter la recherche
                 "label": c["nom"],
                 "label_clean": unidecode(c["nom"].lower().replace("-", " ").strip())
             })
@@ -77,10 +77,6 @@ def create_circle_polygon(center, radius_m, points=100):
 
 communes_df = get_all_communes()
 
-# Focus automatique sur la barre de recherche avec st.experimental_rerun astuce minimale :
-# (on peut forcer le rerun si nécessaire, mais ici on garde simple)
-
-# Entrée utilisateur pour recherche avec focus
 search_input = st.text_input("Rechercher une ville (approx.) :", value="", key="ville_recherche", placeholder="Ex: Saint-Etienne, marseille, nice...")
 
 ville_input = None
@@ -91,7 +87,6 @@ def normalize_str(s):
 if search_input:
     search_clean = normalize_str(search_input)
 
-    # On cherche la meilleure correspondance sur la colonne nettoyée
     choices = communes_df["label_clean"].tolist()
     results = process.extract(
         search_clean,
@@ -109,7 +104,8 @@ else:
     st.info("Veuillez saisir une ville pour commencer la recherche.")
 
 if ville_input:
-    rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
+    # Rayon par défaut 1 km
+    rayon = st.slider("Rayon de recherche (km) :", 1, 50, 1)
 
     ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 
@@ -142,7 +138,7 @@ if ville_input:
         data=[{
             "polygon": circle_polygon,
             "fill_color": [173, 216, 230, 50],
-            "line_color": [100, 160, 200, 150],
+            "line_color": [100, 160, 200, 150],  # Bleu plus foncé
         }],
         get_polygon="polygon",
         get_fill_color="fill_color",
@@ -176,7 +172,6 @@ if ville_input:
         tooltip={"text": "{nom}"}
     ))
 
-    # Sélection villes à afficher
     st.subheader("Cochez les villes à afficher sur la carte")
     selected_villes = st.multiselect(
         "Sélectionnez les villes à afficher",
@@ -186,11 +181,9 @@ if ville_input:
 
     final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
 
-    # Tableau avec CP
     st.subheader("Résultats")
     st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
-    # Codes postaux à copier
     codes_postaux = final_villes["code_postal"].tolist()
     resultat_texte = ", ".join(codes_postaux)
 
