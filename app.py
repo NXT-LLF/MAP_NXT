@@ -7,7 +7,7 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
 
-st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF&PROCESS NXT</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
 
 def get_commune_info(ville_input):
     ville_input = unidecode(ville_input.lower().replace(" ", "-"))
@@ -142,7 +142,7 @@ if ville_input:
         data=[{
             "polygon": circle_polygon,
             "fill_color": [173, 216, 230, 50],
-            "line_color": [173, 216, 230, 150],
+            "line_color": [100, 160, 200, 150],
         }],
         get_polygon="polygon",
         get_fill_color="fill_color",
