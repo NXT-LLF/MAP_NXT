@@ -9,27 +9,6 @@ from fuzzywuzzy import process
 
 st.markdown("<h1 style='color:#ff002d;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
-def get_commune_info(ville_input):
-    ville_input_clean = unidecode(ville_input.lower().replace(" ", "-"))
-    url = f"https://geo.api.gouv.fr/communes?nom={ville_input_clean}&fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
-    r = requests.get(url)
-    data = r.json()
-    if not data:
-        return None
-    commune = data[0]
-    if "codePostal" in commune and commune["codePostal"]:
-        cp = commune["codePostal"]
-    elif "codesPostaux" in commune and commune["codesPostaux"]:
-        cp = ", ".join(commune["codesPostaux"])
-    else:
-        cp = ""
-    return {
-        "nom": commune["nom"],
-        "code_postal": cp,
-        "latitude": commune["centre"]["coordinates"][1],
-        "longitude": commune["centre"]["coordinates"][0]
-    }
-
 @st.cache_data
 def get_all_communes():
     url = "https://geo.api.gouv.fr/communes?fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
@@ -69,21 +48,39 @@ def create_circle_polygon(center, radius_m, points=100):
         coords.append([lon + delta_lon, lat + delta_lat])
     return coords
 
+def compute_distances(df, ref_coords):
+    total = len(df)
+    distances = []
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    for i, row in df.iterrows():
+        distances.append(geodesic(ref_coords, (row["latitude"], row["longitude"])).km)
+        progress_bar.progress((i + 1) / total)
+        status_text.text(f"Calcul en cours... {(i + 1) * 100 // total}%")
+    progress_bar.empty()
+    status_text.empty()
+    return distances
+
 # Chargement des communes
 communes_df = get_all_communes()
 
-# Recherche floue
 search_input = st.text_input("Tapez le nom de la ville de référence :", value="Paris")
+
 if search_input:
     matches = process.extract(search_input, communes_df["nom"], limit=5)
     best_match = matches[0][0] if matches else search_input
 else:
     best_match = "Paris"
 
+try:
+    default_index = int(communes_df[communes_df["nom"].str.lower() == best_match.lower()].index[0])
+except:
+    default_index = 0
+
 ville_input = st.selectbox(
     "Ou sélectionnez dans la liste :",
     options=communes_df["label"].tolist(),
-    index=int(communes_df[communes_df["nom"].str.lower() == best_match.lower()].index[0])
+    index=default_index
 )
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
@@ -91,30 +88,15 @@ rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 ref_coords = (ref_data["latitude"], ref_data["longitude"])
 
-# Progress bar
-progress_bar = st.progress(0)
-status_text = st.empty()
-
 df = communes_df.copy()
-total_rows = len(df)
-distances = []
 
-for idx, row in df.iterrows():
-    distances.append(geodesic(ref_coords, (row["latitude"], row["longitude"])).km)
-    progress = int((idx + 1) / total_rows * 100)
-    progress_bar.progress(progress)
-    status_text.text(f"Calcul en cours... {progress}%")
-
+# Calcul des distances avec la barre de progression
+distances = compute_distances(df, ref_coords)
 df["distance_km"] = distances
-communes_filtrees = df[(df["distance_km"] <= rayon)].sort_values("distance_km")
-
-# Nettoyage progress bar
-progress_bar.empty()
-status_text.empty()
+communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
 
 st.success(f"{len(communes_filtrees)} villes trouvées.")
 
-# Carte
 circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
 circle_layer = pdk.Layer(
     "PolygonLayer",
@@ -142,8 +124,8 @@ scatter_layer = pdk.Layer(
 )
 
 view_state = pdk.ViewState(
-    latitude=ref_data["latitude"],
-    longitude=ref_data["longitude"],
+    latitude=ref_coords[0],
+    longitude=ref_coords[1],
     zoom=9,
     pitch=0
 )
@@ -155,7 +137,6 @@ st.pydeck_chart(pdk.Deck(
     tooltip={"text": "{nom}"}
 ))
 
-# Sélection manuelle
 selected_villes = st.multiselect(
     "Sélectionnez les villes à afficher",
     options=communes_filtrees["label"],
@@ -164,11 +145,9 @@ selected_villes = st.multiselect(
 
 final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
 
-# Tableau + CP
 st.subheader("Résultats")
 st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
-# Zone de chalandise
 codes_postaux = final_villes["code_postal"].tolist()
 resultat_texte = ", ".join(codes_postaux)
 st.text_area("Zone de chalandise :", resultat_texte, height=100)
