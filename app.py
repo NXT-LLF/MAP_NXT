@@ -33,13 +33,21 @@ def get_all_communes():
         try:
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
-            cleaned.append({
-                "nom": c["nom"],
-                "code_postal": c.get("codePostal", ""),
-                "latitude": lat,
-                "longitude": lon,
-                "label": f'{c["nom"]} ({c.get("codePostal","")})'
-            })
+            # Récupération des codes postaux, qu'ils soient dans "codePostal" ou "codesPostaux"
+if "codePostal" in c and c["codePostal"]:
+    cp = c["codePostal"]
+elif "codesPostaux" in c and c["codesPostaux"]:
+    cp = ", ".join(c["codesPostaux"])
+else:
+    cp = ""
+
+cleaned.append({
+    "nom": c["nom"],
+    "code_postal": cp,
+    "latitude": lat,
+    "longitude": lon,
+    "label": f'{c["nom"]} ({cp})'
+})
         except:
             continue
     return pd.DataFrame(cleaned)
