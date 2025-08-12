@@ -1,8 +1,7 @@
 streamlit
-requests
 geopy
 pandas
-numpy
 pydeck
 unidecode
-rapidfuzz
+fuzzywuzzy[speedup]
+requests
