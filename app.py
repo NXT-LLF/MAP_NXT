@@ -7,11 +7,9 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
 
-# Titre principal
 st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
-st.warning("Version du code : 2025-08-12-14h50")
+st.warning("Version du code : 2025-08-12-15h30")
 
-# --- Fonctions utilitaires ---
 def get_commune_info(ville_input):
     ville_input = unidecode(ville_input.lower().replace(" ", "-"))
     url = f"https://geo.api.gouv.fr/communes?nom={ville_input}&fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
@@ -80,10 +78,8 @@ def create_circle_polygon(center, radius_m, points=100):
 def normalize_str(s):
     return unidecode(s.lower().replace("-", " ").strip())
 
-# --- Données communes ---
 communes_df = get_all_communes()
 
-# Recherche approximative
 search_input = st.text_input("Rechercher une ville (approx.) :", value="", key="ville_recherche", placeholder="Ex: Saint-Etienne, marseille, nice...")
 
 ville_input = None
@@ -104,81 +100,87 @@ else:
 if ville_input:
     rayon = st.slider("Rayon de recherche (km) :", 1, 50, 1)  # PAR DÉFAUT À 1 KM
 
-    ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
+    if st.button("Lancer la recherche"):
+        ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 
-    ref = {
-        "nom": ville_input,
-        "code_postal": ref_data["code_postal"],
-        "latitude": ref_data["latitude"],
-        "longitude": ref_data["longitude"]
-    }
+        ref = {
+            "nom": ville_input,
+            "code_postal": ref_data["code_postal"],
+            "latitude": ref_data["latitude"],
+            "longitude": ref_data["longitude"]
+        }
 
-    ref_coords = (ref['latitude'], ref['longitude'])
+        ref_coords = (ref['latitude'], ref['longitude'])
 
-    with st.spinner('Calcul en cours...'):
-        df = communes_df.copy()
+        with st.spinner('Calcul en cours...'):
+            df = communes_df.copy()
 
-        def calc_distance(row):
-            return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
+            def calc_distance(row):
+                return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
 
-        df["distance_km"] = df.apply(calc_distance, axis=1)
-        communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
+            df["distance_km"] = df.apply(calc_distance, axis=1)
+            communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
 
-    st.success(f"{len(communes_filtrees)} villes trouvées.")
+        st.success(f"{len(communes_filtrees)} villes trouvées.")
 
-    # Carte Pydeck
-    circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
-    circle_layer = pdk.Layer(
-        "PolygonLayer",
-        data=[{
-            "polygon": circle_polygon,
-            "fill_color": [173, 216, 230, 50],
-            "line_color": [90, 150, 190, 180],  # plus foncé
-        }],
-        get_polygon="polygon",
-        get_fill_color="fill_color",
-        get_line_color="line_color",
-        pickable=False,
-        stroked=True,
-        filled=True,
-        extruded=False,
-    )
+        circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
+        circle_layer = pdk.Layer(
+            "PolygonLayer",
+            data=[{
+                "polygon": circle_polygon,
+                "fill_color": [173, 216, 230, 50],
+                "line_color": [90, 150, 190, 180],  # plus foncé
+            }],
+            get_polygon="polygon",
+            get_fill_color="fill_color",
+            get_line_color="line_color",
+            pickable=False,
+            stroked=True,
+            filled=True,
+            extruded=False,
+        )
 
-    scatter_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=communes_filtrees,
-        get_position='[longitude, latitude]',
-        get_radius=500,
-        get_fill_color=[255, 0, 45, 180],
-        pickable=True,
-    )
+        scatter_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=communes_filtrees,
+            get_position='[longitude, latitude]',
+            get_radius=500,
+            get_fill_color=[255, 0, 45, 180],
+            pickable=True,
+        )
 
-    view_state = pdk.ViewState(
-        latitude=ref["latitude"],
-        longitude=ref["longitude"],
-        zoom=9,
-        pitch=0
-    )
+        view_state = pdk.ViewState(
+            latitude=ref["latitude"],
+            longitude=ref["longitude"],
+            zoom=9,
+            pitch=0
+        )
 
-    st.pydeck_chart(pdk.Deck(
-        layers=[circle_layer, scatter_layer],
-        initial_view_state=view_state,
-        map_style='light',
-        tooltip={"text": "{nom}"}
-    ))
+        st.pydeck_chart(pdk.Deck(
+            layers=[circle_layer, scatter_layer],
+            initial_view_state=view_state,
+            map_style='light',
+            tooltip={"text": "{nom}"}
+        ))
 
-    # Tableau des résultats
-    st.subheader("📋 Tableau des villes")
-    st.dataframe(communes_filtrees[["nom", "code_postal", "distance_km"]])
+        st.subheader("📋 Tableau des villes")
+        st.dataframe(communes_filtrees[["nom", "code_postal", "distance_km"]])
 
-    # MultiSelect pour choisir les villes affichées en texte
-    selection = st.multiselect(
-        "Sélectionnez les villes à afficher en format texte :",
-        communes_filtrees["nom"].tolist(),
-        default=communes_filtrees["nom"].tolist()
-    )
+        selection = st.multiselect(
+            "Sélectionnez les villes à afficher en format texte :",
+            communes_filtrees["nom"].tolist(),
+            default=communes_filtrees["nom"].tolist()
+        )
 
-    if selection:
-        resultat_textuel = "\n".join(selection)
-        st.markdown(f"<pre style='font-size:16px'>{resultat_textuel}</pre>", unsafe_allow_html=True)
-        st.button("📋 Copier dans le presse-papiers", on_click=lambda: st.write("Texte copié !"))
+        if selection:
+            # On récupère les CP des villes sélectionnées et on affiche en texte avec virgules
+            cps = communes_filtrees[communes_filtrees["nom"].isin(selection)]["code_postal"].tolist()
+            # Nettoyage : s'assurer que c'est bien des strings, et les séparer
+            cps_flat = []
+            for cp in cps:
+                # Certains CP peuvent être une chaîne avec plusieurs codes postaux, on split sur ", "
+                cps_flat.extend([c.strip() for c in cp.split(",")])
+            cps_unique = sorted(set(cps_flat))  # enlever doublons et trier
+
+            resultats_text = ", ".join(cps_unique)
+            st.markdown(f"<pre style='font-size:16px'>{resultats_text}</pre>", unsafe_allow_html=True)
