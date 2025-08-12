@@ -8,6 +8,31 @@ from unidecode import unidecode
 
 st.markdown("<h1 style='color:#ff002d;'>MAP MRKTG POLE PERF NXT</h1>", unsafe_allow_html=True)
 
+def get_commune_info(ville_input):
+    ville_input = unidecode(ville_input.lower().replace(" ", "-"))
+    url = f"https://geo.api.gouv.fr/communes?nom={ville_input}&fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
+    r = requests.get(url)
+    data = r.json()
+    if not data:
+        return None
+    commune = data[0]
+
+    # Récupération du code postal unique ou multiple
+    if "codePostal" in commune and commune["codePostal"]:
+        cp = commune["codePostal"]
+    elif "codesPostaux" in commune and commune["codesPostaux"]:
+        cp = ", ".join(commune["codesPostaux"])
+    else:
+        cp = ""
+
+    return {
+        "nom": commune["nom"],
+        "code_postal": cp,
+        "latitude": commune["centre"]["coordinates"][1],
+        "longitude": commune["centre"]["coordinates"][0]
+    }
+
+@st.cache_data
 def get_all_communes():
     url = "https://geo.api.gouv.fr/communes?fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
     r = requests.get(url)
@@ -18,6 +43,7 @@ def get_all_communes():
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
 
+            # Gestion codePostal et codesPostaux
             if "codePostal" in c and c["codePostal"]:
                 cp = c["codePostal"]
             elif "codesPostaux" in c and c["codesPostaux"]:
@@ -30,7 +56,7 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": c["nom"]
+                "label": f'{c["nom"]}'  # On enlève le code postal dans le label
             })
         except:
             continue
@@ -59,8 +85,18 @@ ville_input = st.selectbox(
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 
+# Extraire nom et coordonnées
+ref_nom = ville_input
 ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
-ref_coords = (ref_data["latitude"], ref_data["longitude"])
+
+ref = {
+    "nom": ref_nom,
+    "code_postal": ref_data["code_postal"],
+    "latitude": ref_data["latitude"],
+    "longitude": ref_data["longitude"]
+}
+
+ref_coords = (ref['latitude'], ref['longitude'])
 
 with st.spinner('Calcul en cours...'):
     df = communes_df.copy()
@@ -69,7 +105,8 @@ with st.spinner('Calcul en cours...'):
         return geodesic(ref_coords, (row["latitude"], row["longitude"])).km
 
     df["distance_km"] = df.apply(calc_distance, axis=1)
-    communes_filtrees = df[df["distance_km"] <= rayon].sort_values("distance_km")
+    communes_filtrees = df[(df["distance_km"] <= rayon)]
+    communes_filtrees = communes_filtrees.sort_values("distance_km")
 
 st.success(f"{len(communes_filtrees)} villes trouvées.")
 
@@ -102,8 +139,8 @@ scatter_layer = pdk.Layer(
 )
 
 view_state = pdk.ViewState(
-    latitude=ref_coords[0],
-    longitude=ref_coords[1],
+    latitude=ref["latitude"],
+    longitude=ref["longitude"],
     zoom=9,
     pitch=0
 )
@@ -115,8 +152,9 @@ st.pydeck_chart(pdk.Deck(
     tooltip={"text": "{nom}"}
 ))
 
-# Gestion multiselect avec ajout dynamique
+# Gestion dynamique multiselect avec ajout manuel
 
+# Initialiser la sélection dans la session
 if "selected_villes" not in st.session_state:
     st.session_state.selected_villes = communes_filtrees["label"].tolist()
 
@@ -128,30 +166,30 @@ selected_villes = st.multiselect(
     key="multi"
 )
 
-nouvelle_ville = st.text_input("Ajouter une ville (exactement comme dans la liste)")
+# Synchroniser la sélection si elle a changé
+if selected_villes != st.session_state.selected_villes:
+    st.session_state.selected_villes = selected_villes
 
-if st.button("Ajouter la ville"):
+# Ajouter une ville manuellement
+nouvelle_ville = st.text_input("Ajouter une ville (exacte)")
+
+if st.button("Ajouter une ville"):
     if nouvelle_ville in communes_filtrees["label"].values:
         if nouvelle_ville not in st.session_state.selected_villes:
             st.session_state.selected_villes.append(nouvelle_ville)
             st.success(f"Ville '{nouvelle_ville}' ajoutée.")
         else:
-            st.warning(f"La ville '{nouvelle_ville}' est déjà sélectionnée.")
+            st.warning(f"Ville '{nouvelle_ville}' déjà sélectionnée.")
     else:
-        st.error(f"La ville '{nouvelle_ville}' n'existe pas dans la liste.")
+        st.error(f"Ville '{nouvelle_ville}' non trouvée dans la liste.")
 
-# Synchroniser la sélection du multiselect avec l'état
-if selected_villes != st.session_state.selected_villes:
-    st.session_state.selected_villes = selected_villes
-
-# Filtrer les villes finales à afficher
+# Filtrer selon sélection mise à jour
 final_villes = communes_filtrees[communes_filtrees["label"].isin(st.session_state.selected_villes)]
 
-# Affichage tableau avec CP
+# Résultats et codes postaux
 st.subheader("Résultats")
 st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
-# Codes postaux à copier
 codes_postaux = final_villes["code_postal"].tolist()
 resultat_texte = ", ".join(codes_postaux)
 
