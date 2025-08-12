@@ -1,5 +1,3 @@
-st.cache_data.clear()
-
 import streamlit as st
 import requests
 from geopy.distance import geodesic
