@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 from geopy.distance import geodesic
 import pandas as pd
@@ -18,6 +17,7 @@ def get_commune_info(ville_input):
         return None
     commune = data[0]
 
+    # Récupération du code postal unique ou multiple
     if "codePostal" in commune and commune["codePostal"]:
         cp = commune["codePostal"]
     elif "codesPostaux" in commune and commune["codesPostaux"]:
@@ -43,6 +43,7 @@ def get_all_communes():
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
 
+            # Gestion codePostal et codesPostaux
             if "codePostal" in c and c["codePostal"]:
                 cp = c["codePostal"]
             elif "codesPostaux" in c and c["codesPostaux"]:
@@ -55,7 +56,7 @@ def get_all_communes():
                 "code_postal": cp,
                 "latitude": lat,
                 "longitude": lon,
-                "label": f'{c["nom"]}'
+                "label": f'{c["nom"]}'  # Ici on enlève le code postal
             })
         except:
             continue
@@ -75,6 +76,7 @@ def create_circle_polygon(center, radius_m, points=100):
 
 communes_df = get_all_communes()
 
+# Sélection ville de référence
 ville_input = st.selectbox(
     "Rechercher la ville de référence :",
     options=communes_df["label"].tolist(),
@@ -83,6 +85,7 @@ ville_input = st.selectbox(
 
 rayon = st.slider("Rayon de recherche (km) :", 1, 50, 10)
 
+# Extraire nom et coordonnées
 ref_nom = ville_input
 ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
 
@@ -107,6 +110,7 @@ with st.spinner('Calcul en cours...'):
 
 st.success(f"{len(communes_filtrees)} villes trouvées.")
 
+# Carte
 st.subheader("Carte interactive")
 circle_polygon = create_circle_polygon(ref_coords, rayon * 1000)
 circle_layer = pdk.Layer(
@@ -148,6 +152,7 @@ st.pydeck_chart(pdk.Deck(
     tooltip={"text": "{nom}"}
 ))
 
+# Sélection villes à afficher
 st.subheader("Cochez les villes à afficher sur la carte")
 selected_villes = st.multiselect(
     "Sélectionnez les villes à afficher",
@@ -157,22 +162,12 @@ selected_villes = st.multiselect(
 
 final_villes = communes_filtrees[communes_filtrees["label"].isin(selected_villes)]
 
+# Tableau avec CP
 st.subheader("Résultats")
 st.dataframe(final_villes[["nom", "code_postal", "distance_km"]].reset_index(drop=True))
 
+# Codes postaux à copier
 codes_postaux = final_villes["code_postal"].tolist()
 resultat_texte = ", ".join(codes_postaux)
 
-st.subheader("Zone de chalandise")
-
-texte_area = st.text_area("", resultat_texte, height=200)
-
-if st.button("Copier dans le presse-papier"):
-    js = f"""
-    <script>
-    navigator.clipboard.writeText(`{resultat_texte}`).then(() => {{
-        alert('Texte copié dans le presse-papier !');
-    }});
-    </script>
-    """
-    components.html(js)
+st.text_area("Zone de chalandise :", resultat_texte, height=100)
