@@ -8,7 +8,15 @@ from unidecode import unidecode
 from rapidfuzz import process, fuzz
 import time
 
-st.markdown("<h1 style='color:#ff002d;'>MAP POLE PERF & PROCESS NXT</h1>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style='display: flex; align-items: center;'>
+        <img src='https://www.facebook.com/photo/?fbid=1145471714285848&set=a.640318378134520' style='width:60px; margin-right:15px;'>
+        <h1 style='color:#ff002d; margin:0;'>MAP POLE PERF & PROCESS NXT</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 @st.cache_data
 def get_all_communes():
