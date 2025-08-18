@@ -11,7 +11,7 @@ import time
 st.markdown(
     """
     <div style='display: flex; align-items: center;'>
-        <img src='https://scontent-cdg4-3.xx.fbcdn.net/v/t39.30808-6/507850690_1145471717619181_7394680818477187875_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=6ee11a&_nc_ohc=DGlwIkRgEmEQ7kNvwEwRveK&_nc_oc=AdnWUOU4skzzbyIBd7jeCVVBVPyFEgzNcrK6nup3xVkXNNW0HwQTvHR4i_EQVhV5q4U&_nc_zt=23&_nc_ht=scontent-cdg4-3.xx&_nc_gid=hsPij3kJ-y8GHpA_6yMoWQ&oh=00_AfWyt15EozDTKXg1KjdfFb1BgAAo39825gEHIyn7I3s0Xw&oe=68A20E17' style='width:60px; margin-right:15px;'>
+        <img src='https://media.licdn.com/dms/image/v2/D4E0BAQEbP7lqDuz7mw/company-logo_200_200/B4EZd3054dGwAM-/0/1750062047120/nexity_logo?e=2147483647&v=beta&t=otRoz68NIqDkZ8yic15QgeeKuZHVcrXGqSUKH1YF9eg' style='width:60px; margin-right:15px;'>
         <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
     </div>
     """,
