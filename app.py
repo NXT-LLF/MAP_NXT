@@ -119,10 +119,10 @@ with col_content:
     st.subheader("1. Définir le Point de Référence")
     
     search_input = st.text_input(
-        "Rechercher une ville ou 'Ville Code Postal' (ex: Andilly 95):", 
+        "Rechercher une ville ou Code Postal :", 
         value="", 
         key="ville_recherche", 
-        placeholder="Ex: Saint-Etienne, Andilly 95, 69002...",
+        placeholder="Ex: Bordeaux, 33127...",
         help="L'ajout du code postal permet de garantir le bon choix en cas d'homonymie."
     )
 
