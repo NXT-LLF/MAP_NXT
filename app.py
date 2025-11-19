@@ -39,7 +39,7 @@ div[data-testid="stTextarea"] > label {
 
 
 # Définition des couleurs personnalisées
-COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage - Point 2)
+COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
 COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
@@ -58,16 +58,23 @@ def haversine_vectorized(lat1, lon1, lat2_series, lon2_series):
     return R * c
 
 def calculate_polygon_coords(center, radius_m, points=100):
-    """Calcule les coordonnées d'un polygone circulaire pour PyDeck [lon, lat]."""
+    """
+    Calcule les coordonnées d'un polygone circulaire pour PyDeck [lon, lat].
+    Correction: Utilisation de delta_lon dans la formule de longitude.
+    """
     lat, lon = center
     coords = []
     for i in range(points):
         angle = 2 * math.pi * i / points
         dx = radius_m * math.cos(angle)
         dy = radius_m * math.sin(angle)
+        # 1 degré de latitude est environ 111.32 km
         delta_lat = dy / 111320
+        # 1 degré de longitude dépend de la latitude
         delta_lon = dx / (40075000 * math.cos(math.radians(lat)) / 360)
-        coords.append([lon + delta_lon, lat + delta_lon])
+        
+        # CORRECTION APPLIQUÉE ICI: on utilise bien delta_lon pour la longitude
+        coords.append([lon + delta_lon, lat + delta_lat]) 
     return coords
 
 def normalize_str(s):
@@ -79,7 +86,6 @@ def normalize_str(s):
 @st.cache_data
 def get_all_communes():
     """Charge toutes les communes françaises depuis l'API Gouv."""
-    # Note: On demande 'codesPostaux' pour pouvoir trier sur le code postal principal (Point 1)
     url = "https://geo.api.gouv.fr/communes?fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
     
     try:
@@ -97,10 +103,9 @@ def get_all_communes():
             lon = c["centre"]["coordinates"][0]
             cp_list = []
             
-            # Utilisation de 'codesPostaux' pour une liste complète des CP
             all_cps = c.get("codesPostaux", [])
             if "codePostal" in c and c["codePostal"] not in all_cps:
-                 all_cps.insert(0, c["codePostal"]) # Assurer que le CP principal est en tête
+                 all_cps.insert(0, c["codePostal"])
             
             cp = ", ".join(list(set(all_cps)))
             first_cp = all_cps[0] if all_cps else ""
@@ -113,7 +118,7 @@ def get_all_communes():
                 "label": f"{c['nom']} ({first_cp})", 
                 "label_clean": normalize_str(c["nom"]),
                 "cp_list": [str(c) for c in list(set(all_cps))],
-                "first_cp_int": int(first_cp) if first_cp.isdigit() else 99999 # Pour le tri
+                "first_cp_int": int(first_cp) if first_cp.isdigit() else 99999
             })
         except:
             continue
@@ -174,16 +179,15 @@ with col_content:
             for res_clean, score, index in results:
                 if score >= 90:
                     data = communes_df.iloc[index]
-                    # Score de similarité du nom exact (pour prioriser Nancy sur Saulxures-lès-Nancy)
+                    # Score de similarité du nom exact 
                     exact_name_score = fuzz.ratio(search_clean, normalize_str(data['nom']))
                     
-                    # On crée une clé de tri composite: (Score, Priorité CP)
-                    # La priorité du CP est l'inverse de la valeur (plus petit CP = plus grande priorité)
+                    # Clé de tri composite: (Score, Priorité CP)
                     sort_key = (score, exact_name_score, 100000 - data["first_cp_int"])
                     
                     scored_suggestions.append((data["label"], sort_key))
             
-            # Trier par clé de tri (score descendant, puis CP ascendant) (Point 1)
+            # Trier par clé de tri
             scored_suggestions.sort(key=lambda x: x[1], reverse=True)
             suggestions = [label for label, sort_key in scored_suggestions]
         
@@ -214,7 +218,8 @@ with col_content:
         
         # --- COUCHES DE BASE ---
         
-        circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000)
+        # La fonction calculate_polygon_coords est maintenant corrigée
+        circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000) 
         
         circle_layer = pdk.Layer(
             "PolygonLayer",
@@ -278,7 +283,7 @@ with col_content:
                 get_radius=500,
                 get_fill_color=COLOR_CITIES,
                 pickable=True, 
-                # Tooltip affiche Nom et Code Postal (Point 3)
+                # Tooltip affiche Nom et Code Postal 
                 tooltip={"text": "{nom} \n Code Postal: {code_postal}"} 
             )
             
@@ -333,7 +338,7 @@ with col_content:
                 
                 st.subheader("Codes Postaux Uniques (Nettoyés)")
                 
-                # Zone de texte pour les codes postaux (sans bouton de copie - Point 4)
+                # Zone de texte pour les codes postaux (sans bouton de copie)
                 st.text_area(
                     f"Codes Postaux uniques ({len(unique_cp)} codes) :", 
                     resultat_cp, 
