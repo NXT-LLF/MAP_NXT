@@ -5,14 +5,14 @@ import pydeck as pdk
 import numpy as np
 import math
 from unidecode import unidecode
-from rapidfuzz import process, fuzz # Utilisation de fuzz.token_set_ratio pour plus de robustesse
+from rapidfuzz import process, fuzz 
 import time 
 
 # --- CONFIGURATION ET EN-TÊTE ---
 
 st.set_page_config(layout="wide")
 
-# Définition des couleurs personnalisées
+# Définition des couleurs personnalisées (Point 2)
 COLOR_ANCHOR = [140, 215, 235, 255]  # #8cd7eb (Bleu clair)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Magenta/Rose foncé)
 COLOR_CIRCLE_LINE = [185, 225, 105, 200] # #b9e169 (Vert clair ligne)
@@ -105,7 +105,7 @@ with col_content:
     st.markdown(
         """
         <div style='display: flex; align-items: center;'>
-            <img src='https://media.licdn.com/dms/image/v2/D4E0BAQEbP7lqDuz7mw/company-logo_200_200/B4EZd3054dGwAM-/0/1750062047120/nexity_logo?e=2147483647&v=beta&t=otRoz68NIqQkZ8yic15QgeeKuZHVcrXGqSUKH1YF9eg' style='width:60px; margin-right:15px;'>
+            <img src='https://media.licdn.com/dms/image/v2/D4E0BAQEbP7lqDuz7mw/company-logo_200_200/B4EZd3054dGwAM-/0/1750062047120/nexity_logo?e=2147483647&v=beta&t=otRoz68NIpQkZ8yic15QgeeKuZHVcrXGqSUKH1YF9eg' style='width:60px; margin-right:15px;'>
             <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
         </div>
         """,
@@ -135,18 +135,23 @@ with col_content:
             suggestions = matching_cp_df["label"].tolist()
 
         else:
-            # Recherche robuste par Nom de Ville (fuzz.token_set_ratio)
+            # Recherche robuste par Nom de Ville (token_set_ratio)
             search_clean = normalize_str(search_input)
             choices = communes_df["label_clean"].tolist()
             
-            # Utilisation de token_set_ratio pour ignorer l'ordre et les mots de liaison (plus fiable)
+            # Utilisation de token_set_ratio, plus fiable pour les noms composés
             results = process.extract(search_clean, choices, scorer=fuzz.token_set_ratio, limit=10)
             
-            # Récupérer les labels originaux avec un seuil de similarité strict
-            suggestions = [
-                communes_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"] 
-                for res in results if res[1] >= 90
-            ]
+            # Récupérer les labels et les scores
+            scored_suggestions = []
+            for res in results:
+                if res[1] >= 90: # Seuil strict
+                    original_label = communes_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"]
+                    scored_suggestions.append((original_label, res[1]))
+            
+            # Point 1: Trier par score descendant (le plus pertinent en premier)
+            scored_suggestions.sort(key=lambda x: x[1], reverse=True)
+            suggestions = [label for label, score in scored_suggestions]
         
         if suggestions:
             suggestions = list(set(suggestions)) 
@@ -161,13 +166,14 @@ with col_content:
 
     # --- ÉTAPE 2: PRÉVISUALISATION ET CALCUL ---
     
+    # Utilisation de session_state pour maintenir l'état après le lancement de la recherche
     submitted = st.session_state.get("submitted", False)
 
     if ville_input:
         ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
         ref_lat, ref_lon = ref_data["latitude"], ref_data["longitude"]
         ref_coords = (ref_lat, ref_lon)
-        ref_cp_display = ref_data["code_postal"].split(',')[0] # Le premier CP
+        ref_cp_display = ref_data["code_postal"].split(',')[0]
 
         st.subheader("2. Définir le Rayon et Visualiser la Zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
@@ -180,8 +186,8 @@ with col_content:
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
-                "fill_color": COLOR_CIRCLE_FILL, 
-                "line_color": COLOR_CIRCLE_LINE, 
+                "fill_color": COLOR_CIRCLE_FILL, # Vert clair transparent (Point 2)
+                "line_color": COLOR_CIRCLE_LINE, # Vert clair opaque (Point 2)
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -190,15 +196,14 @@ with col_content:
             filled=True,
         )
 
-        # Point d'ancrage
         ref_point_layer = pdk.Layer(
             "ScatterplotLayer",
             data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
             get_position='[lon, lat]',
             get_radius=500,
-            get_fill_color=COLOR_ANCHOR, # Point 2: Couleur maintenue
-            pickable=True, # Pour le tooltip
-            tooltip={"text": f"{ville_input}\nCP: {ref_cp_display}"} # Point 2: Ajout du CP
+            get_fill_color=COLOR_ANCHOR, # Bleu clair (Point 2)
+            pickable=True, 
+            tooltip={"text": f"{ville_input}\nCP: {ref_cp_display}"} # Affichage du CP (Point 2)
         )
 
         view_state = pdk.ViewState(
@@ -216,27 +221,40 @@ with col_content:
         submitted_button = st.button("3. Lancer la Recherche et l'Analyse 🚀", use_container_width=True)
         
         if submitted_button:
-            st.session_state["submitted"] = True # Marquer la recherche comme lancée
+            st.session_state["submitted"] = True
             submitted = True
+            # Réinitialiser les résultats si le rayon ou la ville change (pour éviter la confusion)
+            st.session_state['communes_filtrees'] = None 
+            st.session_state['rayon_used'] = None
 
-        if submitted and 'communes_filtrees' not in st.session_state:
+        # Si le rayon ou la ville a changé depuis la dernière soumission, réinitialiser
+        if submitted and (st.session_state.get('ville_input_used') != ville_input or st.session_state.get('rayon_used') != rayon):
+            st.session_state['communes_filtrees'] = None 
+            st.session_state['rayon_used'] = None
+            st.session_state["submitted"] = False
+            submitted = False
             
-            # Calcul de la zone OPTIMISÉ (Haversine)
-            with st.spinner(f"Calcul des distances pour {len(communes_df)} communes..."):
-                communes_df["distance_km"] = haversine_vectorized(
-                    ref_lat, ref_lon, communes_df["latitude"], communes_df["longitude"]
-                )
+        # Si le bouton est cliqué OU si l'état est déjà soumis, procéder au calcul/affichage des résultats
+        if submitted:
             
-            # Filtrage
-            communes_filtrees = communes_df[communes_df["distance_km"] <= rayon].copy()
-            communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
-            communes_filtrees = communes_filtrees.sort_values("distance_km")
-            
-            st.session_state['communes_filtrees'] = communes_filtrees
-            st.session_state['rayon_used'] = rayon
+            # Recalculer ou récupérer les résultats
+            if st.session_state.get('communes_filtrees') is None:
+                
+                # Calcul de la zone OPTIMISÉ (Haversine)
+                with st.spinner(f"Calcul des distances pour {len(communes_df)} communes..."):
+                    communes_df["distance_km"] = haversine_vectorized(
+                        ref_lat, ref_lon, communes_df["latitude"], communes_df["longitude"]
+                    )
+                
+                # Filtrage
+                communes_filtrees = communes_df[communes_df["distance_km"] <= rayon].copy()
+                communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
+                communes_filtrees = communes_filtrees.sort_values("distance_km")
+                
+                st.session_state['communes_filtrees'] = communes_filtrees
+                st.session_state['rayon_used'] = rayon
+                st.session_state['ville_input_used'] = ville_input
 
-        if submitted and 'communes_filtrees' in st.session_state:
-            
             communes_filtrees = st.session_state['communes_filtrees']
             rayon_used = st.session_state['rayon_used']
 
@@ -248,7 +266,7 @@ with col_content:
                 data=communes_filtrees,
                 get_position='[longitude, latitude]',
                 get_radius=500,
-                get_fill_color=COLOR_CITIES, # Magenta
+                get_fill_color=COLOR_CITIES, # Magenta (Point 2)
                 pickable=True, 
                 tooltip={"text": "{nom} \n Distance: {distance_km} km \n Code Postal: {code_postal}"}
             )
@@ -267,7 +285,7 @@ with col_content:
             tooltip=tooltip_data
         ))
 
-        if submitted and 'communes_filtrees' in st.session_state:
+        if submitted and 'communes_filtrees' in st.session_state and st.session_state['communes_filtrees'] is not None:
             st.markdown("---")
             
             # --- AFFICHAGE ET EXPORT DES DONNÉES ---
