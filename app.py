@@ -147,7 +147,7 @@ with col_content:
     )
 
     # --- ÉTAPE 1: RECHERCHE FIABLE (Nom OU CP) ---
-    st.subheader("1. Définir le Point de Référence")
+    st.subheader("Définir le point de référence")
     
     search_input = st.text_input(
         "Rechercher une ville ou un Code Postal:", 
@@ -213,7 +213,7 @@ with col_content:
         ref_coords = (ref_lat, ref_lon)
         ref_cp_display = ref_data["code_postal"].split(',')[0]
 
-        st.subheader("2. Définir le Rayon et Visualiser la Zone")
+        st.subheader("Définir le rayon et visualiser la zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
         # --- COUCHES DE BASE ---
@@ -292,7 +292,7 @@ with col_content:
                             "style": {"backgroundColor": "#c83278", "color": "white"}}
         
         # Affichage de la carte unique (Map au-dessus)
-        st.subheader("Carte de la Zone de Chalandise")
+        st.subheader("Zone de chalandise")
         st.pydeck_chart(pdk.Deck(
             layers=layers,
             initial_view_state=view_state,
@@ -301,7 +301,7 @@ with col_content:
         ))
         
         # --- BOUTON DE LANCEMENT (Bouton en dessous de la map) ---
-        submitted_button = st.button("3. Lancer la Recherche 🚀", use_container_width=True)
+        submitted_button = st.button("3. LANCER LA RECHERCHE 🔍", use_container_width=True)
         
         if submitted_button:
             st.session_state["submitted"] = True
@@ -326,7 +326,7 @@ with col_content:
             col_stats, col_export = st.columns([1, 2])
 
             with col_stats:
-                st.subheader("Statistiques Clés")
+                st.subheader("Statistiques clés")
                 st.metric(label="Commune de référence", value=ville_input)
                 st.metric(label="Rayon ciblé", value=f"{rayon} km")
                 st.metric(label="Villes dans la zone", value=len(communes_filtrees))
@@ -336,11 +336,11 @@ with col_content:
                 unique_cp = list(set(all_cp))
                 resultat_cp = ", ".join(unique_cp)
                 
-                st.subheader("Codes Postaux Uniques (Nettoyés)")
+                st.subheader("Codes Postaux Uniques")
                 
                 # Zone de texte pour les codes postaux (sans bouton de copie)
                 st.text_area(
-                    f"Codes Postaux uniques ({len(unique_cp)} codes) :", 
+                    f"Codes Postaux nettoyés ({len(unique_cp)} CP uniques) :", 
                     resultat_cp, 
                     height=150,
                     key="cp_result_area",
