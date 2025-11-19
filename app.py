@@ -46,8 +46,8 @@ div.stButton > button {
 # Définition des couleurs personnalisées
 COLOR_ANCHOR = [130, 40, 95, 255]    # #82285f (Point d'ancrage - Point 2)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Magenta/Rose foncé)
-COLOR_CIRCLE_LINE = [240, 220, 225, 200] # #f0dce1 (Rayon ligne - Point 2)
-COLOR_CIRCLE_FILL = [240, 220, 225, 50]  # #f0dce1 (Rayon remplissage - Point 2)
+COLOR_CIRCLE_LINE = [240, 220, 225, 200] # #500523 (Rayon ligne - Point 2)
+COLOR_CIRCLE_FILL = [240, 220, 225, 50]  # #f0c8af (Rayon remplissage - Point 2)
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
