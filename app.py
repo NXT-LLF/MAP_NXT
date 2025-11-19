@@ -1,26 +1,30 @@
 import streamlit as st
 import requests
 import pandas as pd
-import pydeck as pdk # Retour à PyDeck
+import pydeck as pdk
 import numpy as np
 import math
 from unidecode import unidecode
-from rapidfuzz import process, fuzz # Utilisation de fuzz.ratio pour plus de fiabilité
+from rapidfuzz import process, fuzz 
 import time 
 
 # --- CONFIGURATION ET EN-TÊTE ---
 
 st.set_page_config(layout="wide")
 
+# Définition des couleurs personnalisées
+COLOR_ANCHOR = [140, 215, 235, 255]  # #8cd7eb -> R, G, B, Alpha
+COLOR_CITIES = [200, 50, 120, 180]    # #c83278 -> R, G, B, Alpha
+COLOR_CIRCLE_LINE = [185, 225, 105, 200] # #b9e169 (Ligne)
+COLOR_CIRCLE_FILL = [185, 225, 105, 50]  # #b9e169 (Remplissage transparent)
+
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
 def haversine_vectorized(lat1, lon1, lat2_series, lon2_series):
     """
-    Calcule la distance Haversine en km entre un point (lat1, lon1) 
-    et une série de points (lat2_series, lon2_series) en utilisant NumPy.
-    CORRIGÉ pour garantir la précision.
+    Calcule la distance Haversine en km entre un point et une série de points.
     """
-    R = 6371 # Rayon moyen de la Terre en km
+    R = 6371
 
     lat1_rad, lon1_rad = np.radians(lat1), np.radians(lon1)
     lat2_series_rad, lon2_series_rad = np.radians(lat2_series), np.radians(lon2_series)
@@ -34,7 +38,7 @@ def haversine_vectorized(lat1, lon1, lat2_series, lon2_series):
     return R * c
 
 def calculate_polygon_coords(center, radius_m, points=100):
-    """Calcule les coordonnées d'un polygone circulaire pour PyDeck (lon, lat)."""
+    """Calcule les coordonnées d'un polygone circulaire pour PyDeck [lon, lat]."""
     lat, lon = center
     coords = []
     for i in range(points):
@@ -43,7 +47,7 @@ def calculate_polygon_coords(center, radius_m, points=100):
         dy = radius_m * math.sin(angle)
         delta_lat = dy / 111320
         delta_lon = dx / (40075000 * math.cos(math.radians(lat)) / 360)
-        coords.append([lon + delta_lon, lat + delta_lat]) # PyDeck attend [lon, lat]
+        coords.append([lon + delta_lon, lat + delta_lat])
     return coords
 
 def normalize_str(s):
@@ -114,51 +118,40 @@ with col_content:
         unsafe_allow_html=True
     )
 
-    # --- ÉTAPE 1: RECHERCHE FIABLE ---
+    # --- ÉTAPE 1: RECHERCHE FIABLE (Nom OU CP) ---
     st.subheader("1. Définir le Point de Référence")
     
     search_input = st.text_input(
-        "Rechercher une ville ou 'Ville Code Postal' (ex: Deuil la Barre 95):", 
+        "Rechercher une ville ou un Code Postal (ex: Deuil la Barre ou 95170):", 
         value="", 
         key="ville_recherche", 
-        placeholder="Ex: Saint-Etienne, Andilly 95, 69002...",
-        help="L'ajout du code postal permet de garantir le bon choix en cas d'homonymie."
+        placeholder="Ex: Saint-Etienne, 95170, 69002...",
+        help="Saisissez soit le nom de la ville, soit le code postal à 5 chiffres."
     )
 
     ville_input = None
+    suggestions = []
 
     if search_input:
         
-        # 1. Tenter la recherche par code postal d'abord
-        cp_from_input = None
-        if len(search_input.split()[-1]) == 5 and search_input.split()[-1].isdigit():
-            cp_from_input = search_input.split()[-1]
-            search_name_part = " ".join(search_input.split()[:-1])
-        else:
-            search_name_part = search_input
-            
-        search_clean = normalize_str(search_name_part)
-        
-        suggestions = []
-        
-        # Filtrage strict sur les noms de ville + CP
-        if cp_from_input:
+        # Point 1: Priorisation par Code Postal si l'entrée ressemble à un CP
+        if len(search_input) == 5 and search_input.isdigit():
+            # Recherche stricte par code postal
+            cp_from_input = search_input
             matching_cp_df = communes_df[communes_df["cp_list"].apply(lambda x: cp_from_input in x)]
-            if not matching_cp_df.empty:
-                choices = matching_cp_df["label_clean"].tolist()
-                results = process.extract(search_clean, choices, scorer=fuzz.ratio, limit=5)
-                # Seuil très haut (95)
-                suggestions.extend([matching_cp_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"] for res in results if res[1] >= 95])
-        
-        # Recherche floue sur tous les noms si la première étape n'a rien donné
-        if not suggestions and search_clean:
+            suggestions = matching_cp_df["label"].tolist()
+
+        else:
+            # Recherche floue par Nom de Ville
+            search_clean = normalize_str(search_input)
             choices = communes_df["label_clean"].tolist()
-            # Utilisation de fuzz.ratio pour la recherche non ambigüe
             results = process.extract(search_clean, choices, scorer=fuzz.ratio, limit=10)
-            suggestions.extend([
+            
+            # Récupérer les labels originaux
+            suggestions = [
                 communes_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"] 
-                for res in results if res[1] >= 85 # Seuil 85 pour la floue générale
-            ])
+                for res in results if res[1] >= 85
+            ]
         
         # Affichage des suggestions (nettoyage des doublons)
         if suggestions:
@@ -179,19 +172,18 @@ with col_content:
         ref_lat, ref_lon = ref_data["latitude"], ref_data["longitude"]
         ref_coords = (ref_lat, ref_lon)
         
-        st.subheader("2. Définir le Rayon et Prévisualiser la Zone")
+        st.subheader("2. Définir le Rayon et Visualiser la Zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
-        # --- CARTE PYDECK (Prévisualisation) ---
+        # Initialisation des couches pour la prévisualisation (PyDeck)
+        circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000)
         
-        circle_polygon_pre = calculate_polygon_coords(ref_coords, rayon * 1000)
-        
-        circle_layer_pre = pdk.Layer(
+        circle_layer = pdk.Layer(
             "PolygonLayer",
             data=[{
-                "polygon": circle_polygon_pre,
-                "fill_color": [255, 165, 0, 50], # Orange léger pour prévisualisation
-                "line_color": [255, 140, 0, 150],
+                "polygon": circle_polygon,
+                "fill_color": COLOR_CIRCLE_FILL, # Vert clair transparent
+                "line_color": COLOR_CIRCLE_LINE, # Vert clair opaque
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -200,30 +192,25 @@ with col_content:
             filled=True,
         )
 
-        # Point d'ancrage simple pour la prévisualisation
         ref_point_layer = pdk.Layer(
             "ScatterplotLayer",
-            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat, "radius": 1000}]),
+            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
             get_position='[lon, lat]',
             get_radius=500,
-            get_fill_color=[255, 140, 0, 255], # Orange opaque
+            get_fill_color=COLOR_ANCHOR, # Bleu clair
             pickable=False,
         )
 
         view_state = pdk.ViewState(
             latitude=ref_lat,
             longitude=ref_lon,
-            zoom=9.5 - (rayon * 0.05), # Zoom dynamique
+            zoom=9.5 - (rayon * 0.05),
             pitch=0
         )
         
-        st.markdown("##### Prévisualisation de la Zone de Chalandise (PyDeck)")
-        st.pydeck_chart(pdk.Deck(
-            layers=[circle_layer_pre, ref_point_layer],
-            initial_view_state=view_state,
-            map_style='light',
-            tooltip={"text": f"Référence: {ville_input} \n Rayon: {rayon} km"}
-        ))
+        # Collecte des couches initiales
+        layers = [circle_layer, ref_point_layer]
+        tooltip_data = {"text": f"Référence: {ville_input} \n Rayon: {rayon} km"}
         
         # --- Lancement de la recherche ---
         
@@ -231,7 +218,7 @@ with col_content:
 
         if submitted:
             
-            # Calcul de la zone OPTIMISÉ (Haversine corrigée)
+            # Calcul de la zone OPTIMISÉ (Haversine)
             with st.spinner(f"Calcul des distances pour {len(communes_df)} communes..."):
                 communes_df["distance_km"] = haversine_vectorized(
                     ref_lat, ref_lon, communes_df["latitude"], communes_df["longitude"]
@@ -244,37 +231,33 @@ with col_content:
             
             st.success(f"✅ {len(communes_filtrees)} villes trouvées dans la zone de {rayon} km.")
 
-            st.markdown("---")
-            
-            # --- CARTE PYDECK (Résultats) ---
-            
             # Couche des villes trouvées (ScatterplotLayer)
             scatter_layer_result = pdk.Layer(
                 "ScatterplotLayer",
                 data=communes_filtrees,
                 get_position='[longitude, latitude]',
                 get_radius=500,
-                get_fill_color=[255, 0, 45, 180], # Rouge
-                pickable=True, # Rend les points interactifs
+                get_fill_color=COLOR_CITIES, # Magenta
+                pickable=True, # Rend les points interactifs (Point 3)
                 tooltip={"text": "{nom} \n Distance: {distance_km} km \n Code Postal: {code_postal}"}
             )
+            
+            # Ajout des résultats à la liste des couches
+            layers.append(scatter_layer_result)
+            tooltip_data = {"html": "<b>{nom}</b><br/>Distance: {distance_km} km", 
+                            "style": {"backgroundColor": "#c83278", "color": "white"}}
 
-            # Recentrement sur la vue (même que la prévisualisation)
-            view_state_result = pdk.ViewState(
-                latitude=ref_lat,
-                longitude=ref_lon,
-                zoom=9.5 - (rayon * 0.05),
-                pitch=0
-            )
+        # Affichage de la carte unique (prévisualisation OU résultats)
+        st.subheader("Carte de la Zone de Chalandise")
+        st.pydeck_chart(pdk.Deck(
+            layers=layers,
+            initial_view_state=view_state,
+            map_style='light',
+            tooltip=tooltip_data
+        ))
 
-            st.subheader("Visualisation de la Zone de Chalandise")
-            st.pydeck_chart(pdk.Deck(
-                layers=[circle_layer_pre, ref_point_layer, scatter_layer_result],
-                initial_view_state=view_state_result,
-                map_style='light',
-                # Tooltip général pour la carte
-                tooltip={"html": "<b>{nom}</b><br/>Distance: {distance_km} km", "style": {"backgroundColor": "red", "color": "white"}}
-            ))
+        if submitted:
+            st.markdown("---")
             
             # --- AFFICHAGE ET EXPORT DES DONNÉES ---
             
