@@ -7,31 +7,21 @@ import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz 
 
-# --- IMPORT NÉCESSAIRE POUR LA FONCTION DE COPIE ---
-# NOTE: Cette librairie doit être installée via pip (pip install streamlit-clipboard)
-# Si vous ne pouvez pas installer de nouvelles librairies, le bouton de copie ne fonctionnera pas.
-try:
-    from streamlit_clipboard import st_copy_to_clipboard
-except ImportError:
-    def st_copy_to_clipboard(label, data):
-        st.error("L'installation de la librairie 'streamlit-clipboard' est requise pour cette fonctionnalité.")
-
-
 # --- CONFIGURATION ET EN-TÊTE ---
 
 st.set_page_config(layout="wide")
 
-# CSS personnalisé pour styliser le bouton (Point 3)
+# CSS personnalisé pour le style et la fonction de copie (Point 4)
 st.markdown("""
 <style>
-/* Centrage du titre et du logo (Point 1) */
+/* Centrage du titre et du logo */
 div.stContainer > div:first-child > div:first-child > div:nth-child(2) {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
 }
-/* Style pour le bouton Lancer la Recherche (Point 3) */
+/* Style pour le bouton Lancer la Recherche */
 div.stButton > button {
     background-color: #FD002D !important;
     color: white !important;
@@ -39,15 +29,25 @@ div.stButton > button {
     font-weight: bold;
     border-color: #FD002D !important;
 }
+
+/* Cache l'icône de la zone de texte pour les CP */
+div[data-testid="stTextarea"] > label > div > svg {
+    display: none;
+}
+
+/* Cache l'icône de la zone de texte (pour la propreté) */
+div[data-testid="stTextarea"] > label {
+    display: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
 # Définition des couleurs personnalisées
-COLOR_ANCHOR = [130, 40, 95, 255]    # #82285f (Point d'ancrage - Point 2)
+COLOR_ANCHOR = [130, 40, 95, 255]    # Anciennement #82285f (Maintenu si utilisé)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Magenta/Rose foncé)
-COLOR_CIRCLE_LINE = [240, 220, 225, 200] # #500523 (Rayon ligne - Point 2)
-COLOR_CIRCLE_FILL = [240, 220, 225, 50]  # #f0c8af (Rayon remplissage - Point 2)
+COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour - Point 2)
+COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage - Point 2)
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
@@ -132,7 +132,7 @@ with st.container(border=False):
     col_empty_left, col_content, col_empty_right = st.columns([1, 4, 1])
 
 with col_content:
-    # --- EN-TÊTE CENTRÉ (Point 1) ---
+    # --- EN-TÊTE CENTRÉ ---
     st.markdown(
         """
         <div style='display: flex; align-items: center; flex-direction: column; text-align: center;'>
@@ -212,8 +212,8 @@ with col_content:
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
-                "fill_color": COLOR_CIRCLE_FILL, # f0dce1
-                "line_color": COLOR_CIRCLE_LINE, # f0dce1
+                "fill_color": COLOR_CIRCLE_FILL, # f0c8af
+                "line_color": COLOR_CIRCLE_LINE, # 500523
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -222,15 +222,13 @@ with col_content:
             filled=True,
         )
 
-        ref_point_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
-            get_position='[lon, lat]',
-            get_radius=500,
-            get_fill_color=COLOR_ANCHOR, # 82285f
-            pickable=True, 
-            tooltip={"text": f"{ville_input}\nCP: {ref_cp_display}"}
-        )
+        # Remplacement du point d'ancrage PyDeck par l'affichage d'un emoji sur le titre (Point 3)
+        # On garde une couche PyDeck simple mais invisible pour que la carte fonctionne, si besoin de zoom/pan
+        layers = [circle_layer]
+        tooltip_data = {"html": f"<b>Référence: 📍 {ville_input}</b><br/>Rayon: {rayon} km"}
+
+        # La couche du point de référence est gérée par l'emoji dans le titre de la tooltip,
+        # et nous n'affichons plus la ScatterplotLayer pour l'ancrage.
 
         view_state = pdk.ViewState(
             latitude=ref_lat,
@@ -239,9 +237,6 @@ with col_content:
             pitch=0
         )
         
-        layers = [circle_layer, ref_point_layer]
-        tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>Rayon: {rayon} km"}
-
         # Vérification si le rayon ou la ville ont changé après la soumission
         current_inputs = (ville_input, rayon)
         last_inputs = st.session_state.get('last_inputs')
@@ -322,18 +317,38 @@ with col_content:
                 resultat_cp = ", ".join(unique_cp)
                 
                 st.subheader("Codes Postaux Uniques (Nettoyés)")
+                
+                # Zone de texte pour les codes postaux (avec ID pour la fonction JS)
                 st.text_area(
                     f"Codes Postaux uniques ({len(unique_cp)} codes) :", 
                     resultat_cp, 
                     height=150,
+                    key="cp_result_area", # Clé pour identifier la zone
                     help="Copiez cette liste pour l'utiliser dans vos outils marketing."
                 )
                 
-                # Bouton de copie (Point 4)
-                st_copy_to_clipboard(
-                    label="Copier les Codes Postaux 📋", 
-                    data=resultat_cp,
-                )
+                # Bouton de copie (Point 4) - Utilisation du JS natif
+                copy_button_html = f"""
+                <button 
+                    onclick="navigator.clipboard.writeText(document.querySelector('[data-testid=stTextarea] textarea').value).then(function() {{
+                        alert('Codes Postaux copiés !');
+                    }})" 
+                    style="
+                        background-color: #500523; 
+                        color: white; 
+                        padding: 10px 20px; 
+                        border: none; 
+                        border-radius: 5px; 
+                        cursor: pointer; 
+                        margin-top: 10px;
+                        width: 100%;
+                    "
+                >
+                    Copier les Codes Postaux 📋
+                </button>
+                """
+                st.markdown(copy_button_html, unsafe_allow_html=True)
+
 
             with st.expander("Afficher le détail des communes trouvées"):
                 st.dataframe(
