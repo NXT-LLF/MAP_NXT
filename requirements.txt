@@ -6,4 +6,3 @@ unidecode
 pandas
 requests
 numpy
-streamlit_clipboard
