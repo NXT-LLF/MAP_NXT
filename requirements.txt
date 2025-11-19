@@ -6,5 +6,3 @@ unidecode
 pandas
 requests
 numpy
-folium
-streamlit-folium
