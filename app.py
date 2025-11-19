@@ -6,38 +6,46 @@ import math
 import folium
 from unidecode import unidecode
 from rapidfuzz import process, fuzz
-from streamlit_folium import st_folium # Recommandé pour une meilleure intégration Folium
+from streamlit_folium import st_folium # Pour une meilleure intégration Folium
 
 # --- CONFIGURATION INITIALE ---
 
-# Le set_page_config doit rester en début de script, mais le contenu sera centré dans un container.
 st.set_page_config(layout="wide")
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
 def haversine_vectorized(lat1, lon1, lat2_series, lon2_series):
-    """Calcule la distance Haversine en km entre un point et une série de points."""
-    R = 6371
-    lat1, lon1 = np.radians(lat1), np.radians(lon1)
-    lat2_series, lon2_series = np.radians(lat2_series), np.radians(lon2_series)
-    dlon = lat2_series - lat1
-    dlat = lon2_series - lon1
-    a = np.sin(dlat / 2.0)**2 + np.cos(lat1) * np.cos(lat2_series) * np.sin(dlon / 2.0)**2
+    """
+    Calcule la distance Haversine en km entre un point (lat1, lon1) 
+    et une série de points (lat2_series, lon2_series) en utilisant NumPy.
+    Correction : lat/lon et dlat/dlon ont été corrigés pour être dans le bon ordre.
+    """
+    R = 6371 # Rayon moyen de la Terre en km
+
+    lat1_rad, lon1_rad = np.radians(lat1), np.radians(lon1)
+    lat2_series_rad, lon2_series_rad = np.radians(lat2_series), np.radians(lon2_series)
+    
+    # CALCUL CORRIGÉ
+    dlon = lon2_series_rad - lon1_rad
+    dlat = lat2_series_rad - lat1_rad
+
+    a = np.sin(dlat / 2.0)**2 + np.cos(lat1_rad) * np.cos(lat2_series_rad) * np.sin(dlon / 2.0)**2
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    
     return R * c
 
 def calculate_polygon_coords(center, radius_m, points=100):
     """Calcule les coordonnées d'un polygone circulaire pour Folium."""
     lat, lon = center
     coords = []
-    # Reste en coordonnées [lon, lat] pour le calcul, puis inversé pour Folium
+    # Folium attend [lat, lon]
     for i in range(points):
         angle = 2 * math.pi * i / points
         dx = radius_m * math.cos(angle)
         dy = radius_m * math.sin(angle)
         delta_lat = dy / 111320
         delta_lon = dx / (40075000 * math.cos(math.radians(lat)) / 360)
-        coords.append([lat + delta_lat, lon + delta_lon]) # Folium attend [lat, lon]
+        coords.append([lat + delta_lat, lon + delta_lon]) 
     return coords
 
 def normalize_str(s):
@@ -79,7 +87,7 @@ def get_all_communes():
                 "longitude": lon,
                 "label": f"{c['nom']} ({first_cp})", 
                 "label_clean": normalize_str(c["nom"]),
-                "cp_list": [str(c) for c in list(set(cp_list))] # Liste des codes postaux
+                "cp_list": [str(c) for c in list(set(cp_list))]
             })
         except:
             continue
@@ -92,7 +100,6 @@ if communes_df.empty:
     st.stop()
 
 # --- BLOC DE CONTENU CENTRÉ ---
-# Point 1: Centrage des éléments
 with st.container(border=False):
     col_empty_left, col_content, col_empty_right = st.columns([1, 4, 1])
 
@@ -124,7 +131,6 @@ with col_content:
     if search_input:
         search_clean = normalize_str(search_input)
         
-        # Tentative de détecter le Code Postal à la fin de la chaîne
         cp_from_input = None
         if len(search_input.split()[-1]) == 5 and search_input.split()[-1].isdigit():
             cp_from_input = search_input.split()[-1]
@@ -133,33 +139,30 @@ with col_content:
         
         suggestions = []
         
-        # Point 2: Priorité absolue à la recherche CP + Nom
+        # LOGIQUE DE RECHERCHE CORRIGÉE ET AFFINÉE (Point 1)
         if cp_from_input:
-            # Recherche exacte sur la liste des codes postaux
             matching_cp_df = communes_df[communes_df["cp_list"].apply(lambda x: cp_from_input in x)]
             
             if not matching_cp_df.empty:
-                # Si le nom de la ville est donné en plus du CP
                 if search_clean:
                     choices = matching_cp_df["label_clean"].tolist()
                     results = process.extract(search_clean, choices, scorer=fuzz.WRatio, limit=5)
-                    # Seuil très strict (95) pour les homonymes + CP
-                    suggestions = [matching_cp_df.iloc[choices.index(res[0])]["label"] for res in results if res[1] >= 95]
+                    # Utiliser le label complet, pas seulement le label_clean
+                    suggestions = [matching_cp_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"] for res in results if res[1] >= 95]
                 else:
-                    # Si seul le CP est donné, liste toutes les villes de ce CP
                     suggestions = matching_cp_df["label"].tolist()
                     
-        # Recherche floue fallback
-        if not suggestions and search_clean:
+        if not suggestions: # Recherche floue fallback si pas de CP précis ou échec
             choices = communes_df["label_clean"].tolist()
             results = process.extract(search_clean, choices, scorer=fuzz.WRatio, limit=10)
-            # Seuil de 80 pour la recherche floue générale
             suggestions = [
-                communes_df.iloc[choices.index(res[0])]["label"] 
+                communes_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"] 
                 for res in results if res[1] >= 80
             ]
         
         if suggestions:
+            # Nettoyer les doublons dans les suggestions elles-mêmes
+            suggestions = list(set(suggestions)) 
             ville_input = st.selectbox(
                 "Sélectionnez la ville de référence :", 
                 suggestions
@@ -169,7 +172,7 @@ with col_content:
     else:
         st.info("Veuillez saisir une ville ou un code postal pour commencer.")
 
-    # --- ÉTAPE 2: PRÉVISUALISATION DU RAYON ET CARTE UNIQUE ---
+    # --- ÉTAPE 2: PRÉVISUALISATION ET CARTE UNIQUE ---
     
     ref_data = None
     ref_lat, ref_lon = None, None
@@ -181,16 +184,15 @@ with col_content:
         
         st.subheader("2. Définir le Rayon et Prévisualiser la Zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
-
-        # --- CARTE FOLIUM : PRÉVISUALISATION ET RÉSULTAT FINAL ---
-        # Point 3: Carte Unique
+        
+        # Initialisation de la carte (Point 2: Carte Unique)
         m = folium.Map(
             location=[ref_lat, ref_lon], 
             zoom_start=int(9.5 - (rayon * 0.05)),
             tiles="CartoDB positron"
         )
         
-        # Prévisualisation: Couche Zone de Chalandise
+        # Couche Zone de Chalandise (Prévisualisation)
         circle_coords = calculate_polygon_coords(ref_coords, rayon * 1000)
         folium.Polygon(
             locations=circle_coords, 
@@ -202,11 +204,15 @@ with col_content:
             fill_opacity=0.1
         ).add_to(m)
 
-        # Marqueur de référence
-        folium.Marker(
+        # Point d'ancrage simple (Point 2: Retrait du logo)
+        folium.CircleMarker(
             location=[ref_lat, ref_lon],
-            popup=f"**{ville_input}** (Référence)",
-            icon=folium.Icon(color='red', icon='home', prefix='fa')
+            radius=5,
+            color='#FF8C00', # Même couleur que la bordure du rayon
+            fill=True,
+            fill_color='#FF8C00', 
+            fill_opacity=1.0,
+            tooltip=f"**{ville_input}** (Référence)"
         ).add_to(m)
 
         # --- Lancement de la recherche ---
@@ -215,21 +221,23 @@ with col_content:
 
         # --- LOGIQUE DE CALCUL ET AFFICHAGE ---
         
+        communes_filtrees = pd.DataFrame()
         if submitted:
             
-            # Calcul de la zone OPTIMISÉ (Haversine)
+            # Calcul de la zone OPTIMISÉ (Haversine corrigée)
             with st.spinner(f"Calcul des distances pour {len(communes_df)} communes..."):
                 communes_df["distance_km"] = haversine_vectorized(
                     ref_lat, ref_lon, communes_df["latitude"], communes_df["longitude"]
                 )
             
+            # Filtrage (Point 3: Correction des résultats hors rayon)
             communes_filtrees = communes_df[communes_df["distance_km"] <= rayon].copy()
             communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
             communes_filtrees = communes_filtrees.sort_values("distance_km")
             
             st.success(f"✅ {len(communes_filtrees)} villes trouvées dans la zone de {rayon} km.")
 
-            # Couche Villes Filtrées (Ajoutée APRÈS le calcul)
+            # Couche Villes Filtrées
             villes_group = folium.FeatureGroup(name="Villes dans la Zone", show=True).add_to(m)
             for index, row in communes_filtrees.iterrows():
                 folium.CircleMarker(
@@ -242,53 +250,17 @@ with col_content:
                     tooltip=f"{row['nom']} ({row['code_postal'].split(',')[0]}) - {row['distance_km']} km"
                 ).add_to(villes_group)
 
-            # --- Couches d'Analyse (Point 4: Mapbox/Couches) ---
-            
-            # Couche 1: Prix M² (DVF - Simulation Heatmap/Tuiles)
-            dvf_layer = folium.FeatureGroup(name="Prix M² DVF (Simulé)", show=False).add_to(m)
-            # Simuler des zones de prix avec une couleur (exemple de tuilage minimaliste)
-            dvf_color_map = {0.2: '#FFEDA0', 0.5: '#FEB24C', 0.8: '#FC4E2A', 1.0: '#E31A1C'}
-            for index, row in communes_filtrees.sample(min(20, len(communes_filtrees))).iterrows():
-                price_sim = np.random.rand() # Simuler le niveau de prix
-                color = next(c for level, c in dvf_color_map.items() if price_sim < level)
-                folium.Circle(
-                    location=[row["latitude"], row["longitude"]],
-                    radius=200, # Petite taille pour tuiles minimalistes
-                    color=color,
-                    fill=True,
-                    fill_color=color,
-                    fill_opacity=0.6,
-                    tooltip=f"Prix M² Simulé: {int(price_sim * 4000) + 2000} €/m²"
-                ).add_to(dvf_layer)
-            
-            # Couche 2: Transports (Simulation Lignes/Arrêts minimalistes)
-            transport_layer = folium.FeatureGroup(name="Lignes/Arrêts Transports (Simulé)", show=False).add_to(m)
-            # Arrêts simulés
-            folium.Marker(
-                location=[ref_lat + 0.01, ref_lon + 0.01],
-                popup="Arrêt de Bus Simulé",
-                icon=folium.Icon(color='blue', icon='bus', prefix='fa')
-            ).add_to(transport_layer)
-            # Ligne simulée (minimaliste)
-            folium.PolyLine(
-                locations=[[ref_lat, ref_lon], [ref_lat + 0.01, ref_lon + 0.01], [ref_lat + 0.02, ref_lon]],
-                color="blue",
-                weight=3,
-                opacity=0.7,
-                tooltip="Ligne de Transport Sim."
-            ).add_to(transport_layer)
-
-            # Ajout du contrôle des couches
+            # Ajout du contrôle des couches (seulement les villes filtrées)
             folium.LayerControl().add_to(m)
-            
+
         
-        # Affichage de la carte (que la recherche soit lancée ou non)
+        # Affichage de la carte (Point 2: Appelé une seule fois)
         st_folium(m, width=900, height=500, key="folium_map", returned_objects=[])
 
         if submitted:
             st.markdown("---")
             
-            # --- AFFICHAGE ET EXPORT DES DONNÉES (Point 5: Dashboard/Statistiques) ---
+            # --- AFFICHAGE ET EXPORT DES DONNÉES ---
             
             col_stats, col_export = st.columns([1, 2])
 
@@ -305,7 +277,6 @@ with col_content:
                 resultat_cp = ", ".join(unique_cp)
                 
                 st.subheader("Codes Postaux Uniques (Nettoyés)")
-                # Agrandissement du bloc codes postaux (Point 5)
                 st.text_area(
                     f"Codes Postaux uniques ({len(unique_cp)} codes) :", 
                     resultat_cp, 
@@ -313,15 +284,9 @@ with col_content:
                     help="Copiez cette liste pour l'utiliser dans vos outils marketing."
                 )
 
-            # Détail des communes masqué par défaut (Point 5)
+            # Détail des communes masqué par défaut
             with st.expander("Afficher le détail des communes trouvées"):
                 st.dataframe(
                     communes_filtrees[["nom", "code_postal", "distance_km"]].reset_index(drop=True),
                     use_container_width=True
                 )
-        
-        # Affichage de la carte seule tant que la recherche n'est pas lancée
-        if not submitted:
-            st_folium(m, width=900, height=500, key="folium_map_pre", returned_objects=[])
-
-# --- FIN DU BLOC CENTRÉ ---
