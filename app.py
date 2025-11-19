@@ -112,7 +112,7 @@ with col_content:
     )
 
     # --- ÉTAPE 1: RECHERCHE FIABLE (Nom OU CP) ---
-    st.subheader("1. Définir le Point de Référence")
+    st.subheader("Définir le Point de Référence")
     
     search_input = st.text_input(
         "Rechercher une ville ou un Code Postal:", 
@@ -173,7 +173,7 @@ with col_content:
         ref_coords = (ref_lat, ref_lon)
         ref_cp_display = ref_data["code_postal"].split(',')[0]
 
-        st.subheader("2. Définir le Rayon et Visualiser la Zone")
+        st.subheader("Définir le Rayon et Visualiser la Zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
         # --- COUCHES DE BASE ---
