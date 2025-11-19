@@ -6,13 +6,12 @@ import numpy as np
 import math
 from unidecode import unidecode
 from rapidfuzz import process, fuzz 
-import time 
 
 # --- CONFIGURATION ET EN-TÊTE ---
 
 st.set_page_config(layout="wide")
 
-# Définition des couleurs personnalisées (Point 2)
+# Définition des couleurs personnalisées
 COLOR_ANCHOR = [140, 215, 235, 255]  # #8cd7eb (Bleu clair)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Magenta/Rose foncé)
 COLOR_CIRCLE_LINE = [185, 225, 105, 200] # #b9e169 (Vert clair ligne)
@@ -105,7 +104,7 @@ with col_content:
     st.markdown(
         """
         <div style='display: flex; align-items: center;'>
-            <img src='https://media.licdn.com/dms/image/v2/D4E0BAQEbP7lqDuz7mw/company-logo_200_200/B4EZd3054dGwAM-/0/1750062047120/nexity_logo?e=2147483647&v=beta&t=otRoz68NIpQkZ8yic15QgeeKuZHVcrXGqSUKH1YF9eg' style='width:60px; margin-right:15px;'>
+            <img src='https://media.licdn.com/dms/image/v2/D4E0BAQEbP7lqDuz7mw/company-logo_200_200/B4EZd3054dGwAM-/0/1750062047120/nexity_logo?e=2147483647&v=beta&t=otRoz68NIqQkZ8yic15QgeeKuHXVcrXGqSUKH1YF9eg' style='width:60px; margin-right:15px;'>
             <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
         </div>
         """,
@@ -139,17 +138,15 @@ with col_content:
             search_clean = normalize_str(search_input)
             choices = communes_df["label_clean"].tolist()
             
-            # Utilisation de token_set_ratio, plus fiable pour les noms composés
             results = process.extract(search_clean, choices, scorer=fuzz.token_set_ratio, limit=10)
             
-            # Récupérer les labels et les scores
             scored_suggestions = []
             for res in results:
                 if res[1] >= 90: # Seuil strict
                     original_label = communes_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"]
                     scored_suggestions.append((original_label, res[1]))
             
-            # Point 1: Trier par score descendant (le plus pertinent en premier)
+            # Trier par score descendant
             scored_suggestions.sort(key=lambda x: x[1], reverse=True)
             suggestions = [label for label, score in scored_suggestions]
         
@@ -166,8 +163,9 @@ with col_content:
 
     # --- ÉTAPE 2: PRÉVISUALISATION ET CALCUL ---
     
-    # Utilisation de session_state pour maintenir l'état après le lancement de la recherche
-    submitted = st.session_state.get("submitted", False)
+    # Initialisation de l'état
+    if 'submitted' not in st.session_state:
+        st.session_state['submitted'] = False
 
     if ville_input:
         ref_data = communes_df[communes_df["label"] == ville_input].iloc[0]
@@ -178,7 +176,7 @@ with col_content:
         st.subheader("2. Définir le Rayon et Visualiser la Zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
-        # --- COUCHES DE BASE (Prévisualisation) ---
+        # --- COUCHES DE BASE ---
         
         circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000)
         
@@ -186,8 +184,8 @@ with col_content:
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
-                "fill_color": COLOR_CIRCLE_FILL, # Vert clair transparent (Point 2)
-                "line_color": COLOR_CIRCLE_LINE, # Vert clair opaque (Point 2)
+                "fill_color": COLOR_CIRCLE_FILL, 
+                "line_color": COLOR_CIRCLE_LINE, 
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -201,9 +199,9 @@ with col_content:
             data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
             get_position='[lon, lat]',
             get_radius=500,
-            get_fill_color=COLOR_ANCHOR, # Bleu clair (Point 2)
+            get_fill_color=COLOR_ANCHOR, 
             pickable=True, 
-            tooltip={"text": f"{ville_input}\nCP: {ref_cp_display}"} # Affichage du CP (Point 2)
+            tooltip={"text": f"{ville_input}\nCP: {ref_cp_display}"}
         )
 
         view_state = pdk.ViewState(
@@ -220,45 +218,36 @@ with col_content:
         
         submitted_button = st.button("3. Lancer la Recherche et l'Analyse 🚀", use_container_width=True)
         
+        # Logique de soumission
         if submitted_button:
             st.session_state["submitted"] = True
-            submitted = True
-            # Réinitialiser les résultats si le rayon ou la ville change (pour éviter la confusion)
-            st.session_state['communes_filtrees'] = None 
-            st.session_state['rayon_used'] = None
+            # Forcer le recalcul en cas de soumission manuelle
+            st.session_state['recalculate'] = True
+        
+        # Vérification si le rayon ou la ville ont changé après la soumission
+        current_inputs = (ville_input, rayon)
+        last_inputs = st.session_state.get('last_inputs')
+        
+        if last_inputs != current_inputs:
+            # Si les entrées ont changé, réinitialiser l'état de soumission pour forcer le recalcul
+            st.session_state['submitted'] = False
+            st.session_state['recalculate'] = True
+            st.session_state['last_inputs'] = current_inputs
 
-        # Si le rayon ou la ville a changé depuis la dernière soumission, réinitialiser
-        if submitted and (st.session_state.get('ville_input_used') != ville_input or st.session_state.get('rayon_used') != rayon):
-            st.session_state['communes_filtrees'] = None 
-            st.session_state['rayon_used'] = None
-            st.session_state["submitted"] = False
-            submitted = False
+        # Si l'état est "soumis", effectuer le calcul
+        if st.session_state.get("submitted"):
             
-        # Si le bouton est cliqué OU si l'état est déjà soumis, procéder au calcul/affichage des résultats
-        if submitted:
+            # Calcul et filtrage
+            with st.spinner(f"Calcul des distances pour {len(communes_df)} communes..."):
+                communes_df["distance_km"] = haversine_vectorized(
+                    ref_lat, ref_lon, communes_df["latitude"], communes_df["longitude"]
+                )
             
-            # Recalculer ou récupérer les résultats
-            if st.session_state.get('communes_filtrees') is None:
-                
-                # Calcul de la zone OPTIMISÉ (Haversine)
-                with st.spinner(f"Calcul des distances pour {len(communes_df)} communes..."):
-                    communes_df["distance_km"] = haversine_vectorized(
-                        ref_lat, ref_lon, communes_df["latitude"], communes_df["longitude"]
-                    )
-                
-                # Filtrage
-                communes_filtrees = communes_df[communes_df["distance_km"] <= rayon].copy()
-                communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
-                communes_filtrees = communes_filtrees.sort_values("distance_km")
-                
-                st.session_state['communes_filtrees'] = communes_filtrees
-                st.session_state['rayon_used'] = rayon
-                st.session_state['ville_input_used'] = ville_input
-
-            communes_filtrees = st.session_state['communes_filtrees']
-            rayon_used = st.session_state['rayon_used']
-
-            st.success(f"✅ {len(communes_filtrees)} villes trouvées dans la zone de {rayon_used} km.")
+            communes_filtrees = communes_df[communes_df["distance_km"] <= rayon].copy()
+            communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
+            communes_filtrees = communes_filtrees.sort_values("distance_km")
+            
+            st.success(f"✅ {len(communes_filtrees)} villes trouvées dans la zone de {rayon} km.")
 
             # Couche des villes trouvées (ScatterplotLayer)
             scatter_layer_result = pdk.Layer(
@@ -266,7 +255,7 @@ with col_content:
                 data=communes_filtrees,
                 get_position='[longitude, latitude]',
                 get_radius=500,
-                get_fill_color=COLOR_CITIES, # Magenta (Point 2)
+                get_fill_color=COLOR_CITIES,
                 pickable=True, 
                 tooltip={"text": "{nom} \n Distance: {distance_km} km \n Code Postal: {code_postal}"}
             )
@@ -275,31 +264,19 @@ with col_content:
             tooltip_data = {"html": "<b>{nom}</b><br/>Distance: {distance_km} km", 
                             "style": {"backgroundColor": "#c83278", "color": "white"}}
 
+            # --- AFFICHAGE DES RÉSULTATS (Dashboard) ---
 
-        # Affichage de la carte unique (prévisualisation OU résultats)
-        st.subheader("Carte de la Zone de Chalandise")
-        st.pydeck_chart(pdk.Deck(
-            layers=layers,
-            initial_view_state=view_state,
-            map_style='light',
-            tooltip=tooltip_data
-        ))
-
-        if submitted and 'communes_filtrees' in st.session_state and st.session_state['communes_filtrees'] is not None:
             st.markdown("---")
-            
-            # --- AFFICHAGE ET EXPORT DES DONNÉES ---
             
             col_stats, col_export = st.columns([1, 2])
 
             with col_stats:
                 st.subheader("Statistiques Clés")
                 st.metric(label="Commune de référence", value=ville_input)
-                st.metric(label="Rayon ciblé", value=f"{rayon_used} km")
+                st.metric(label="Rayon ciblé", value=f"{rayon} km")
                 st.metric(label="Villes dans la zone", value=len(communes_filtrees))
             
             with col_export:
-                # Nettoyage des doublons
                 all_cp = [cp_item.strip() for cp in communes_filtrees["code_postal"] for cp_item in cp.split(',')]
                 unique_cp = list(set(all_cp))
                 resultat_cp = ", ".join(unique_cp)
@@ -312,9 +289,17 @@ with col_content:
                     help="Copiez cette liste pour l'utiliser dans vos outils marketing."
                 )
 
-            # Détail des communes masqué par défaut
             with st.expander("Afficher le détail des communes trouvées"):
                 st.dataframe(
                     communes_filtrees[["nom", "code_postal", "distance_km"]].reset_index(drop=True),
                     use_container_width=True
                 )
+        
+        # Affichage de la carte unique (toujours en bas)
+        st.subheader("Carte de la Zone de Chalandise")
+        st.pydeck_chart(pdk.Deck(
+            layers=layers,
+            initial_view_state=view_state,
+            map_style='light',
+            tooltip=tooltip_data
+        ))
