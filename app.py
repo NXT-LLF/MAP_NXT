@@ -11,7 +11,7 @@ from rapidfuzz import process, fuzz
 
 st.set_page_config(layout="wide")
 
-# CSS personnalisé pour le style et la fonction de copie (Point 4)
+# CSS personnalisé pour le style du bouton
 st.markdown("""
 <style>
 /* Centrage du titre et du logo */
@@ -30,12 +30,7 @@ div.stButton > button {
     border-color: #FD002D !important;
 }
 
-/* Cache l'icône de la zone de texte pour les CP */
-div[data-testid="stTextarea"] > label > div > svg {
-    display: none;
-}
-
-/* Cache l'icône de la zone de texte (pour la propreté) */
+/* Cache l'icône de la zone de texte pour les CP et autres ajustements */
 div[data-testid="stTextarea"] > label {
     display: none;
 }
@@ -44,10 +39,10 @@ div[data-testid="stTextarea"] > label {
 
 
 # Définition des couleurs personnalisées
-COLOR_ANCHOR = [130, 40, 95, 255]    # Anciennement #82285f (Maintenu si utilisé)
-COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Magenta/Rose foncé)
-COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour - Point 2)
-COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage - Point 2)
+COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage - Point 2)
+COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
+COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
+COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
@@ -72,7 +67,7 @@ def calculate_polygon_coords(center, radius_m, points=100):
         dy = radius_m * math.sin(angle)
         delta_lat = dy / 111320
         delta_lon = dx / (40075000 * math.cos(math.radians(lat)) / 360)
-        coords.append([lon + delta_lon, lat + delta_lat])
+        coords.append([lon + delta_lon, lat + delta_lon])
     return coords
 
 def normalize_str(s):
@@ -84,6 +79,7 @@ def normalize_str(s):
 @st.cache_data
 def get_all_communes():
     """Charge toutes les communes françaises depuis l'API Gouv."""
+    # Note: On demande 'codesPostaux' pour pouvoir trier sur le code postal principal (Point 1)
     url = "https://geo.api.gouv.fr/communes?fields=nom,code,codePostal,codesPostaux,centre&format=json&geometry=centre"
     
     try:
@@ -100,13 +96,14 @@ def get_all_communes():
             lat = c["centre"]["coordinates"][1]
             lon = c["centre"]["coordinates"][0]
             cp_list = []
-            if "codePostal" in c and c["codePostal"]:
-                cp_list.append(c["codePostal"])
-            if "codesPostaux" in c and c["codesPostaux"]:
-                cp_list.extend(c["codesPostaux"])
             
-            cp = ", ".join(list(set(cp_list)))
-            first_cp = cp_list[0] if cp_list else ""
+            # Utilisation de 'codesPostaux' pour une liste complète des CP
+            all_cps = c.get("codesPostaux", [])
+            if "codePostal" in c and c["codePostal"] not in all_cps:
+                 all_cps.insert(0, c["codePostal"]) # Assurer que le CP principal est en tête
+            
+            cp = ", ".join(list(set(all_cps)))
+            first_cp = all_cps[0] if all_cps else ""
 
             cleaned.append({
                 "nom": c["nom"],
@@ -115,7 +112,8 @@ def get_all_communes():
                 "longitude": lon,
                 "label": f"{c['nom']} ({first_cp})", 
                 "label_clean": normalize_str(c["nom"]),
-                "cp_list": [str(c) for c in list(set(cp_list))]
+                "cp_list": [str(c) for c in list(set(all_cps))],
+                "first_cp_int": int(first_cp) if first_cp.isdigit() else 99999 # Pour le tri
             })
         except:
             continue
@@ -160,27 +158,37 @@ with col_content:
     if search_input:
         
         if len(search_input) == 5 and search_input.isdigit():
+            # Recherche stricte par code postal
             cp_from_input = search_input
             matching_cp_df = communes_df[communes_df["cp_list"].apply(lambda x: cp_from_input in x)]
             suggestions = matching_cp_df["label"].tolist()
 
         else:
+            # Recherche robuste par Nom de Ville
             search_clean = normalize_str(search_input)
             choices = communes_df["label_clean"].tolist()
             
-            results = process.extract(search_clean, choices, scorer=fuzz.token_set_ratio, limit=10)
+            results = process.extract(search_clean, choices, scorer=fuzz.token_set_ratio, limit=20)
             
             scored_suggestions = []
-            for res in results:
-                if res[1] >= 90:
-                    original_label = communes_df.iloc[communes_df["label_clean"].tolist().index(res[0])]["label"]
-                    scored_suggestions.append((original_label, res[1]))
+            for res_clean, score, index in results:
+                if score >= 90:
+                    data = communes_df.iloc[index]
+                    # Score de similarité du nom exact (pour prioriser Nancy sur Saulxures-lès-Nancy)
+                    exact_name_score = fuzz.ratio(search_clean, normalize_str(data['nom']))
+                    
+                    # On crée une clé de tri composite: (Score, Priorité CP)
+                    # La priorité du CP est l'inverse de la valeur (plus petit CP = plus grande priorité)
+                    sort_key = (score, exact_name_score, 100000 - data["first_cp_int"])
+                    
+                    scored_suggestions.append((data["label"], sort_key))
             
+            # Trier par clé de tri (score descendant, puis CP ascendant) (Point 1)
             scored_suggestions.sort(key=lambda x: x[1], reverse=True)
-            suggestions = [label for label, score in scored_suggestions]
+            suggestions = [label for label, sort_key in scored_suggestions]
         
         if suggestions:
-            suggestions = list(set(suggestions)) 
+            suggestions = list(dict.fromkeys(suggestions)) # Dé-duplication tout en gardant l'ordre
             ville_input = st.selectbox(
                 "Sélectionnez la ville de référence :", 
                 suggestions
@@ -212,8 +220,8 @@ with col_content:
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
-                "fill_color": COLOR_CIRCLE_FILL, # f0c8af
-                "line_color": COLOR_CIRCLE_LINE, # 500523
+                "fill_color": COLOR_CIRCLE_FILL, 
+                "line_color": COLOR_CIRCLE_LINE, 
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -222,13 +230,19 @@ with col_content:
             filled=True,
         )
 
-        # Remplacement du point d'ancrage PyDeck par l'affichage d'un emoji sur le titre (Point 3)
-        # On garde une couche PyDeck simple mais invisible pour que la carte fonctionne, si besoin de zoom/pan
-        layers = [circle_layer]
-        tooltip_data = {"html": f"<b>Référence: 📍 {ville_input}</b><br/>Rayon: {rayon} km"}
+        # Rétablissement du point d'ancrage (Point 2)
+        ref_point_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
+            get_position='[lon, lat]',
+            get_radius=500,
+            get_fill_color=COLOR_ANCHOR, # FD002D
+            pickable=True, 
+            tooltip={"text": f"Ancrage: {ville_input}\nCP: {ref_cp_display}"}
+        )
 
-        # La couche du point de référence est gérée par l'emoji dans le titre de la tooltip,
-        # et nous n'affichons plus la ScatterplotLayer pour l'ancrage.
+        layers = [circle_layer, ref_point_layer]
+        tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>CP: {ref_cp_display}"}
 
         view_state = pdk.ViewState(
             latitude=ref_lat,
@@ -264,11 +278,12 @@ with col_content:
                 get_radius=500,
                 get_fill_color=COLOR_CITIES,
                 pickable=True, 
-                tooltip={"text": "{nom} \n Distance: {distance_km} km \n Code Postal: {code_postal}"}
+                # Tooltip affiche Nom et Code Postal (Point 3)
+                tooltip={"text": "{nom} \n Code Postal: {code_postal}"} 
             )
             
             layers.append(scatter_layer_result)
-            tooltip_data = {"html": "<b>{nom}</b><br/>Distance: {distance_km} km", 
+            tooltip_data = {"html": "<b>{nom}</b><br/>CP: {code_postal}", 
                             "style": {"backgroundColor": "#c83278", "color": "white"}}
         
         # Affichage de la carte unique (Map au-dessus)
@@ -318,37 +333,14 @@ with col_content:
                 
                 st.subheader("Codes Postaux Uniques (Nettoyés)")
                 
-                # Zone de texte pour les codes postaux (avec ID pour la fonction JS)
+                # Zone de texte pour les codes postaux (sans bouton de copie - Point 4)
                 st.text_area(
                     f"Codes Postaux uniques ({len(unique_cp)} codes) :", 
                     resultat_cp, 
                     height=150,
-                    key="cp_result_area", # Clé pour identifier la zone
+                    key="cp_result_area",
                     help="Copiez cette liste pour l'utiliser dans vos outils marketing."
                 )
-                
-                # Bouton de copie (Point 4) - Utilisation du JS natif
-                copy_button_html = f"""
-                <button 
-                    onclick="navigator.clipboard.writeText(document.querySelector('[data-testid=stTextarea] textarea').value).then(function() {{
-                        alert('Codes Postaux copiés !');
-                    }})" 
-                    style="
-                        background-color: #500523; 
-                        color: white; 
-                        padding: 10px 20px; 
-                        border: none; 
-                        border-radius: 5px; 
-                        cursor: pointer; 
-                        margin-top: 10px;
-                        width: 100%;
-                    "
-                >
-                    Copier les Codes Postaux 📋
-                </button>
-                """
-                st.markdown(copy_button_html, unsafe_allow_html=True)
-
 
             with st.expander("Afficher le détail des communes trouvées"):
                 st.dataframe(
