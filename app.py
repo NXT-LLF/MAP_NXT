@@ -44,35 +44,38 @@ COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
 COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
-# --- AJOUTS POUR LES RÉGIONS (Anciens Départements) ---
-# Couleurs pastel et une fonction de hachage simple pour garantir la cohérence
-REGION_COLORS_MAP = {
-    "Auvergne-Rhône-Alpes": [140, 225, 200, 120],  # Mint
-    "Bourgogne-Franche-Comté": [255, 175, 175, 120], # Soft Red
-    "Bretagne": [170, 200, 255, 120],             # Light Blue
-    "Centre-Val de Loire": [255, 230, 140, 120],  # Soft Yellow
-    "Corse": [190, 190, 190, 120],               # Light Gray
-    "Grand Est": [220, 170, 255, 120],           # Soft Purple
-    "Hauts-de-France": [180, 255, 180, 120],     # Light Green
-    "Île-de-France": [255, 150, 200, 120],       # Rose/Pink
-    "Normandie": [200, 200, 255, 120],           # Pastel Blue
-    "Nouvelle-Aquitaine": [255, 210, 170, 120],  # Light Orange
-    "Occitanie": [150, 255, 210, 120],           # Soft Cyan
-    "Pays de la Loire": [230, 150, 150, 120],     # Coral
-    "Provence-Alpes-Côte d'Azur": [170, 255, 170, 120], # Pale Green
-    # Couleurs par défaut si une région manque
-    "Autre": [200, 200, 200, 100]
-}
+# --- AJOUTS POUR LES DÉPARTEMENTS ---
+# Couleurs pastel très transparentes pour les départements (alpha = 60/255)
+# Nous utilisons une fonction de hachage simple pour garantir une couleur unique par numéro de département
+# tout en gardant une teinte pastel.
 
-def get_region_color(region_name):
-    """Retourne la couleur pastel associée à la région."""
-    return REGION_COLORS_MAP.get(region_name, REGION_COLORS_MAP["Autre"])
+def get_departement_color(code_departement):
+    """Retourne une couleur pastel très transparente basée sur le code du département."""
+    # Convertit le code (ex: '75' ou '2A') en un nombre
+    try:
+        if code_departement.isdigit():
+            num = int(code_departement)
+        else:
+            # Pour la Corse (2A, 2B), ou les DOM-TOM
+            num = sum(ord(c) for c in code_departement)
+    except:
+        num = 0
+    
+    # Génère des composantes R, G, B basées sur le nombre, pour un effet de couleur différent
+    R = 100 + (num * 17 % 155)  # Entre 100 et 255
+    G = 100 + (num * 23 % 155)
+    B = 100 + (num * 31 % 155)
+    
+    # Opacité très réduite (alpha = 60 sur 255) pour l'effet "très transparent"
+    ALPHA = 60
+    
+    return [R, G, B, ALPHA]
     
 @st.cache_data
-def get_geojson_regions():
-    """Charge le GeoJSON des régions françaises (pour les contours et les couleurs)."""
-    # Utilisation du GeoJSON des régions (plus approprié pour un zoom arrière)
-    geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/regions-version-simplifiee.geojson"
+def get_geojson_departements():
+    """Charge le GeoJSON des départements français (pour les contours et les couleurs)."""
+    # Utilisation du GeoJSON des départements
+    geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson"
     
     try:
         r = requests.get(geojson_url, timeout=30)
@@ -82,18 +85,18 @@ def get_geojson_regions():
         
         # Ajout de la couleur à chaque Feature pour PyDeck
         for feature in geojson_data['features']:
-            nom_region = feature['properties']['nom']
-            feature['properties']['fill_color'] = get_region_color(nom_region)
+            code_dept = feature['properties']['code']
+            feature['properties']['fill_color'] = get_departement_color(code_dept)
             
         return geojson_data
         
     except requests.exceptions.RequestException as e:
-        st.error(f"Erreur de connexion pour charger le GeoJSON des régions : {e}")
+        st.error(f"Erreur de connexion pour charger le GeoJSON des départements : {e}")
         return None
 
-# Chargement du GeoJSON des régions au démarrage
-regions_geojson = get_geojson_regions()
-# --- FIN DES AJOUTS RÉGIONS ---
+# Chargement du GeoJSON des départements au démarrage
+departements_geojson = get_geojson_departements()
+# --- FIN DES AJOUTS DÉPARTEMENTS ---
 
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
@@ -287,7 +290,7 @@ with col_content:
             filled=True,
         )
 
-        # Rétablissement du point d'ancrage (Point 2)
+        # Rétablissement du point d'ancrage
         ref_point_layer = pdk.Layer(
             "ScatterplotLayer",
             data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
@@ -300,32 +303,31 @@ with col_content:
 
         layers = [] 
         
-        # --- COUCHE : CONTOUR ET COULEURS DES RÉGIONS (arrière-plan) ---
-        if regions_geojson:
-            region_layer = pdk.Layer(
+        # --- COUCHE : CONTOUR ET COULEURS DES DÉPARTEMENTS (arrière-plan) ---
+        if departements_geojson:
+            departement_layer = pdk.Layer(
                 "GeoJsonLayer",
-                data=regions_geojson,
-                opacity=0.8,
+                data=departements_geojson,
+                opacity=1.0, # L'opacité est gérée par la couleur [R, G, B, A] du GeoJSON
                 stroked=True,
                 filled=True,
                 extruded=False,
                 wireframe=True,
-                # Utilisation des couleurs calculées dans le GeoJSON
+                # Utilisation des couleurs très transparentes calculées dans le GeoJSON
                 get_fill_color="properties.fill_color", 
                 get_line_color=[150, 150, 150, 200], # Gris plus clair
                 get_line_width_min_pixels=1,
-                pickable=True,
-                tooltip={"html": "Région: <b>{nom}</b>"} 
+                # IMPORANT: Retrait du pickable et du tooltip ici pour corriger l'overlay sur toute la carte (Point 3)
+                pickable=False 
             )
             # Cette couche doit être la première pour être en arrière-plan
-            layers.append(region_layer) 
+            layers.append(departement_layer) 
             
-        # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les régions
+        # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les départements
         layers.append(circle_layer)
         layers.append(ref_point_layer)
         
         # Tooltip par défaut (lorsqu'aucune ville filtrée n'est présente)
-        # Point 1: Tooltip uniquement sur la zone de résultat (sera écrasé si soumission)
         tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>CP: {ref_cp_display}"}
 
 
@@ -363,13 +365,12 @@ with col_content:
                 get_radius=500,
                 get_fill_color=COLOR_CITIES,
                 pickable=True, 
-                # Le tooltip sera géré par l'objet principal `tooltip` de pdk.Deck (Point 1)
             )
             
             layers.append(scatter_layer_result)
             
             # Point 1 (suite): Définir le Tooltip pour la couche de résultats
-            # Ceci écrase le tooltip par défaut et est déclenché par le survol
+            # Ceci écrase le tooltip par défaut et est déclenché par le survol d'une ville
             tooltip_data = {
                 "html": "<b>{nom}</b><br/>CP: {code_postal}<br/>Distance: {distance_km} km", 
                 "style": {"backgroundColor": "rgba(200, 50, 120, 0.9)", "color": "white"}
