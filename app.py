@@ -43,6 +43,30 @@ COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
 COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
+COLOR_DEPARTMENTS_LINE = [100, 100, 100, 150] # Gris clair
+COLOR_DEPARTMENTS_FILL = [255, 255, 255, 0] # Remplissage transparent
+
+# --- NOUVELLE FONCTION: CHARGEMENT DU GEOJSON DES DÉPARTEMENTS ---
+
+@st.cache_data
+def get_geojson_departements():
+    """Charge le GeoJSON des départements français depuis une source externe."""
+    
+    # URL d'un GeoJSON public et simplifié des départements (source OpenData)
+    # C'est un fichier volumineux, donc le cache est crucial.
+    geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson"
+    
+    try:
+        r = requests.get(geojson_url, timeout=30)
+        r.raise_for_status()
+        # Le résultat est le GeoJSON complet
+        return r.json() 
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erreur de connexion pour charger le GeoJSON des départements : {e}")
+        return None
+
+# Chargement du GeoJSON
+departements_geojson = get_geojson_departements()
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
@@ -246,7 +270,31 @@ with col_content:
             tooltip={"text": f"Ancrage: {ville_input}\nCP: {ref_cp_display}"}
         )
 
-        layers = [circle_layer, ref_point_layer]
+layers = []
+        
+        # --- NOUVELLE COUCHE : CONTOUR DES DÉPARTEMENTS ---
+        if departements_geojson:
+            departement_layer = pdk.Layer(
+                "GeoJsonLayer",
+                data=departements_geojson,
+                opacity=0.8,
+                stroked=True,
+                filled=True,
+                extruded=False,
+                wireframe=True,
+                get_fill_color=COLOR_DEPARTMENTS_FILL, 
+                get_line_color=COLOR_DEPARTMENTS_LINE,
+                get_line_width_min_pixels=1,
+                pickable=True,
+                tooltip={"html": "Département: <b>{nom}</b>"} # Le nom vient des propriétés du GeoJSON
+            )
+            # Cette couche doit être la première pour être en arrière-plan
+            layers.append(departement_layer) 
+            
+        # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les départements
+        layers.append(circle_layer)
+        layers.append(ref_point_layer)
+        
         tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>CP: {ref_cp_display}"}
 
         view_state = pdk.ViewState(
