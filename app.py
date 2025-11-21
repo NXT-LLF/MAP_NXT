@@ -44,26 +44,56 @@ COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
 COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
-# --- AJOUTS POUR LES DÉPARTEMENTS ---
-COLOR_DEPARTMENTS_LINE = [100, 100, 100, 150] # Gris clair, contour des départements
-COLOR_DEPARTMENTS_FILL = [255, 255, 255, 0] # Remplissage transparent
+# --- AJOUTS POUR LES RÉGIONS (Anciens Départements) ---
+# Couleurs pastel et une fonction de hachage simple pour garantir la cohérence
+REGION_COLORS_MAP = {
+    "Auvergne-Rhône-Alpes": [140, 225, 200, 120],  # Mint
+    "Bourgogne-Franche-Comté": [255, 175, 175, 120], # Soft Red
+    "Bretagne": [170, 200, 255, 120],             # Light Blue
+    "Centre-Val de Loire": [255, 230, 140, 120],  # Soft Yellow
+    "Corse": [190, 190, 190, 120],               # Light Gray
+    "Grand Est": [220, 170, 255, 120],           # Soft Purple
+    "Hauts-de-France": [180, 255, 180, 120],     # Light Green
+    "Île-de-France": [255, 150, 200, 120],       # Rose/Pink
+    "Normandie": [200, 200, 255, 120],           # Pastel Blue
+    "Nouvelle-Aquitaine": [255, 210, 170, 120],  # Light Orange
+    "Occitanie": [150, 255, 210, 120],           # Soft Cyan
+    "Pays de la Loire": [230, 150, 150, 120],     # Coral
+    "Provence-Alpes-Côte d'Azur": [170, 255, 170, 120], # Pale Green
+    # Couleurs par défaut si une région manque
+    "Autre": [200, 200, 200, 100]
+}
 
+def get_region_color(region_name):
+    """Retourne la couleur pastel associée à la région."""
+    return REGION_COLORS_MAP.get(region_name, REGION_COLORS_MAP["Autre"])
+    
 @st.cache_data
-def get_geojson_departements():
-    """Charge le GeoJSON des départements français depuis une source externe."""
-    geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson"
+def get_geojson_regions():
+    """Charge le GeoJSON des régions françaises (pour les contours et les couleurs)."""
+    # Utilisation du GeoJSON des régions (plus approprié pour un zoom arrière)
+    geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/regions-version-simplifiee.geojson"
     
     try:
         r = requests.get(geojson_url, timeout=30)
         r.raise_for_status()
-        return r.json() 
+        
+        geojson_data = r.json()
+        
+        # Ajout de la couleur à chaque Feature pour PyDeck
+        for feature in geojson_data['features']:
+            nom_region = feature['properties']['nom']
+            feature['properties']['fill_color'] = get_region_color(nom_region)
+            
+        return geojson_data
+        
     except requests.exceptions.RequestException as e:
-        st.error(f"Erreur de connexion pour charger le GeoJSON des départements : {e}")
+        st.error(f"Erreur de connexion pour charger le GeoJSON des régions : {e}")
         return None
 
-# Chargement du GeoJSON au démarrage
-departements_geojson = get_geojson_departements()
-# --- FIN DES AJOUTS DÉPARTEMENTS ---
+# Chargement du GeoJSON des régions au démarrage
+regions_geojson = get_geojson_regions()
+# --- FIN DES AJOUTS RÉGIONS ---
 
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
@@ -268,33 +298,36 @@ with col_content:
             tooltip={"text": f"Ancrage: {ville_input}\nCP: {ref_cp_display}"}
         )
 
-        # Remplacement de l'ancienne définition de 'layers' par le nouveau bloc (correctement indenté)
         layers = [] 
         
-        # --- COUCHE : CONTOUR DES DÉPARTEMENTS (arrière-plan) ---
-        if departements_geojson:
-            departement_layer = pdk.Layer(
+        # --- COUCHE : CONTOUR ET COULEURS DES RÉGIONS (arrière-plan) ---
+        if regions_geojson:
+            region_layer = pdk.Layer(
                 "GeoJsonLayer",
-                data=departements_geojson,
+                data=regions_geojson,
                 opacity=0.8,
                 stroked=True,
                 filled=True,
                 extruded=False,
                 wireframe=True,
-                get_fill_color=COLOR_DEPARTMENTS_FILL, 
-                get_line_color=COLOR_DEPARTMENTS_LINE,
+                # Utilisation des couleurs calculées dans le GeoJSON
+                get_fill_color="properties.fill_color", 
+                get_line_color=[150, 150, 150, 200], # Gris plus clair
                 get_line_width_min_pixels=1,
                 pickable=True,
-                tooltip={"html": "Département: <b>{nom}</b>"} 
+                tooltip={"html": "Région: <b>{nom}</b>"} 
             )
             # Cette couche doit être la première pour être en arrière-plan
-            layers.append(departement_layer) 
+            layers.append(region_layer) 
             
-        # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les départements
+        # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les régions
         layers.append(circle_layer)
         layers.append(ref_point_layer)
         
+        # Tooltip par défaut (lorsqu'aucune ville filtrée n'est présente)
+        # Point 1: Tooltip uniquement sur la zone de résultat (sera écrasé si soumission)
         tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>CP: {ref_cp_display}"}
+
 
         view_state = pdk.ViewState(
             latitude=ref_lat,
@@ -330,13 +363,17 @@ with col_content:
                 get_radius=500,
                 get_fill_color=COLOR_CITIES,
                 pickable=True, 
-                # Tooltip affiche Nom et Code Postal 
-                tooltip={"text": "{nom} \n Code Postal: {code_postal}"} 
+                # Le tooltip sera géré par l'objet principal `tooltip` de pdk.Deck (Point 1)
             )
             
             layers.append(scatter_layer_result)
-            tooltip_data = {"html": "<b>{nom}</b><br/>CP: {code_postal}", 
-                            "style": {"backgroundColor": "#c83278", "color": "white"}}
+            
+            # Point 1 (suite): Définir le Tooltip pour la couche de résultats
+            # Ceci écrase le tooltip par défaut et est déclenché par le survol
+            tooltip_data = {
+                "html": "<b>{nom}</b><br/>CP: {code_postal}<br/>Distance: {distance_km} km", 
+                "style": {"backgroundColor": "rgba(200, 50, 120, 0.9)", "color": "white"}
+            }
         
         # Affichage de la carte unique (Map au-dessus)
         st.subheader("Zone de chalandise")
@@ -344,7 +381,8 @@ with col_content:
             layers=layers,
             initial_view_state=view_state,
             map_style='light',
-            tooltip=tooltip_data
+            # Tooltip ne s'affiche que si pickable=True sur la couche survolée
+            tooltip=tooltip_data 
         ))
         
         # --- BOUTON DE LANCEMENT (Bouton en dessous de la map) ---
