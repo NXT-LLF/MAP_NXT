@@ -352,7 +352,6 @@ with col_content:
             get_radius=500,
             get_fill_color=COLOR_ANCHOR, # FD002D
             pickable=True, 
-            tooltip={"text": f"Ancrage: {ville_input}\nCP: {ref_cp_display}"}
         )
 
         layers = [] 
@@ -372,7 +371,7 @@ with col_content:
                 get_fill_color="properties.fill_color", 
                 get_line_color=[150, 150, 150, 200], 
                 get_line_width_min_pixels=1,
-                pickable=False 
+                pickable=True # CHANGEMENT: Activation de l'interactivité pour le survol
             )
             layers.append(departement_layer) 
 
@@ -396,9 +395,27 @@ with col_content:
         layers.append(circle_layer)
         layers.append(ref_point_layer)
         
-        # Tooltip par défaut (lorsqu'aucune ville filtrée n'est présente)
-        tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>CP: {ref_cp_display}"}
-
+        
+        # CHANGEMENT: Définition d'un Tooltip unique et robuste
+        # Il utilise le templating Jinja de PyDeck pour afficher des informations
+        # différentes selon que l'objet survolé est un GeoJson (département) ou un Scatterplot (ville)
+        tooltip_data = {
+            "html": """
+                {% if object.properties %}
+                    <!-- Département (GeoJson) -->
+                    <b>Département {{ object.properties.code }}</b>
+                    <br/>{{ object.properties.nom }}
+                {% else %}
+                    <!-- Ville (Scatterplot) -->
+                    <b>{{ object.nom }}</b><br/>
+                    CP: {{ object.code_postal }}
+                    {% if object.distance_km %}
+                        <br/>Distance: {{ object.distance_km }} km
+                    {% endif %}
+                {% endif %}
+            """,
+            "style": {"backgroundColor": "rgba(0, 0, 0, 0.8)", "color": "white"}
+        }
 
         view_state = pdk.ViewState(
             latitude=ref_lat,
@@ -438,11 +455,6 @@ with col_content:
             
             layers.append(scatter_layer_result)
             
-            # Définir le Tooltip pour la couche de résultats (survol des villes)
-            tooltip_data = {
-                "html": "<b>{nom}</b><br/>CP: {code_postal}<br/>Distance: {distance_km} km", 
-                "style": {"backgroundColor": "rgba(200, 50, 120, 0.9)", "color": "white"}
-            }
         
         # Affichage de la carte unique (Map au-dessus)
         st.subheader("Zone de chalandise")
@@ -450,7 +462,7 @@ with col_content:
             layers=layers,
             initial_view_state=view_state,
             map_style='light',
-            # Tooltip ne s'affiche que si pickable=True sur la couche survolée
+            # Le Tooltip dynamique gère toutes les couches pickable
             tooltip=tooltip_data 
         ))
         
