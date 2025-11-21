@@ -46,8 +46,6 @@ COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
 # --- AJOUTS POUR LES DÉPARTEMENTS ---
 # Couleurs pastel très transparentes pour les départements (alpha = 51/255 soit ~20% d'opacité)
-# Nous utilisons une fonction de hachage simple pour garantir une couleur unique par numéro de département
-# tout en gardant une teinte pastel.
 
 def get_departement_color(code_departement):
     """Retourne une couleur pastel très transparente basée sur le code du département (Alpha 51)."""
@@ -397,16 +395,14 @@ with col_content:
         
         
         # CHANGEMENT: Définition d'un Tooltip unique et robuste
-        # Il utilise le templating Jinja de PyDeck pour afficher des informations
-        # différentes selon que l'objet survolé est un GeoJson (département) ou un Scatterplot (ville)
+        # Template ajusté pour afficher uniquement "Nom = Code" pour les départements
         tooltip_data = {
             "html": """
                 {% if object.properties %}
-                    <!-- Département (GeoJson) -->
-                    <b>Département {{ object.properties.code }}</b>
-                    <br/>{{ object.properties.nom }}
-                {% else %}
-                    <!-- Ville (Scatterplot) -->
+                    <!-- Département (GeoJson): Nom = Code -->
+                    <b>{{ object.properties.nom }}</b> = {{ object.properties.code }}
+                {% elif object.nom %}
+                    <!-- Ville (Scatterplot ou Point d'Ancrage) -->
                     <b>{{ object.nom }}</b><br/>
                     CP: {{ object.code_postal }}
                     {% if object.distance_km %}
