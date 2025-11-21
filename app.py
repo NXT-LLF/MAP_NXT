@@ -41,7 +41,6 @@ div[data-testid="stTextarea"] > label {
 # Définition des couleurs personnalisées
 COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage et bordure de rayon)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
-# ANCIENNES couleurs de rayon (maintenant mises à jour)
 COLOR_CIRCLE_LINE = COLOR_ANCHOR      # Utilisera la couleur #FD002D pour la bordure
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
@@ -244,7 +243,7 @@ with col_content:
     st.markdown(
         """
         <div style='display: flex; align-items: center; flex-direction: column; text-align: center;'>
-            <img src='https://scontent-cdg4-3.xx.fbcdn.net/v/t39.30808-6/507850690_1145471717619181_7394680818477187875_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=y8xhIjr4YPgQ7kNvwGej3VU&_nc_oc=AdmPx93F-yyeU7-IOLcFvujNGXaz4mBlEMOCpexvxcGHKk1LZN71Dkto3B0EfFPgQXo&_nc_zt=23&_nc_ht=scontent-cdg4-3.xx&_nc_gid=cU5o6AToXnvJleEE01KUTA&oh=00_Afj4ibgV5zJ5TigLCUVRQUL7JrJj5YJIlxQEr6FDF3Ecwg&oe=6923B197' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
+            <img src='https://scontent-cdg4-3.xx.fbcdn.net/v/t39.30808-6/507850690_1145471717619181_7394680818477187875_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=y8xhIjr4YPgQ7kNvwGej3VU&_nc_oc=AdmPx93F-yyeU7-IOLcFvujNGXaz4mBlEMOCpexpvcGHKk1LZN71Dkto3B0EfFPQWXo&_nc_zt=23&_nc_ht=scontent-cdg4-3.xx&_nc_gid=cU5o6AToXnvJleEE01KUTA&oh=00_Afj4ibgV5zJ5TigLCUVRQUL7JrJj5YJIlxQEr6FDF3Ecwg&oe=6923B197' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
             <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
         </div>
         """,
@@ -329,14 +328,14 @@ with col_content:
         # La fonction calculate_polygon_coords est maintenant corrigée
         circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000) 
         
-        # 2) CHANGEMENT: Utilisation de COLOR_ANCHOR pour la bordure du cercle
+        # 2) CHANGEMENT: Augmentation de l'épaisseur de la bordure (get_line_width_min_pixels=4)
         circle_layer = pdk.Layer(
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
                 "fill_color": COLOR_CIRCLE_FILL, 
-                "line_color": COLOR_ANCHOR, # <--- CHANGEMENT ICI (bordure #FD002D)
-                "line_width_min_pixels": 2, # Pour rendre la bordure plus visible
+                "line_color": COLOR_ANCHOR, 
+                "line_width_min_pixels": 4, # <--- CHANGEMENT ICI (Épaisseur plus grande)
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -398,7 +397,7 @@ with col_content:
         layers.append(ref_point_layer)
         
         
-        # CHANGEMENT: Tooltip simplifié pour gérer UNIQUEMENT les points (villes)
+        # 1) CORRECTION DU TEMPLATE DU TOOLTIP (HTML)
         tooltip_data = {
             "html": """
                 {% if object.nom %}
@@ -440,8 +439,8 @@ with col_content:
             communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
             communes_filtrees = communes_filtrees.sort_values("distance_km")
 
-            # 1) CORRECTION: Le DataFrame communes_filtrees a déjà les colonnes 'nom' et 'code_postal'
-            # Le ScatterplotLayer les rend donc disponibles pour le tooltip.
+            # Le DataFrame communes_filtrees contient déjà 'nom', 'code_postal' et 'distance_km'
+            # Le ScatterplotLayer les rend disponibles pour le tooltip.
             scatter_layer_result = pdk.Layer(
                 "ScatterplotLayer",
                 data=communes_filtrees,
