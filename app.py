@@ -271,6 +271,9 @@ with col_content:
         st.subheader("Définir le rayon et visualiser la zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
+        # NOUVEAU: Checkbox pour afficher ou masquer la couche des départements
+        show_departements = st.checkbox("Afficher les départements en arrière-plan", value=False)
+        
         # --- COUCHES DE BASE ---
         
         # La fonction calculate_polygon_coords est maintenant corrigée
@@ -304,7 +307,8 @@ with col_content:
         layers = [] 
         
         # --- COUCHE : CONTOUR ET COULEURS DES DÉPARTEMENTS (arrière-plan) ---
-        if departements_geojson:
+        # CONDITIONNELLEMENT ajoutée si la checkbox est cochée
+        if departements_geojson and show_departements:
             departement_layer = pdk.Layer(
                 "GeoJsonLayer",
                 data=departements_geojson,
@@ -317,7 +321,7 @@ with col_content:
                 get_fill_color="properties.fill_color", 
                 get_line_color=[150, 150, 150, 200], # Gris plus clair
                 get_line_width_min_pixels=1,
-                # IMPORANT: Retrait du pickable et du tooltip ici pour corriger l'overlay sur toute la carte (Point 3)
+                # Le pickable reste à False pour éviter l'overlay sur toute la carte
                 pickable=False 
             )
             # Cette couche doit être la première pour être en arrière-plan
@@ -369,8 +373,7 @@ with col_content:
             
             layers.append(scatter_layer_result)
             
-            # Point 1 (suite): Définir le Tooltip pour la couche de résultats
-            # Ceci écrase le tooltip par défaut et est déclenché par le survol d'une ville
+            # Définir le Tooltip pour la couche de résultats (survol des villes)
             tooltip_data = {
                 "html": "<b>{nom}</b><br/>CP: {code_postal}<br/>Distance: {distance_km} km", 
                 "style": {"backgroundColor": "rgba(200, 50, 120, 0.9)", "color": "white"}
