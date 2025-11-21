@@ -45,12 +45,12 @@ COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
 # --- AJOUTS POUR LES DÉPARTEMENTS ---
-# Couleurs pastel très transparentes pour les départements (alpha = 60/255)
+# Couleurs pastel très transparentes pour les départements (alpha = 51/255 soit ~20% d'opacité)
 # Nous utilisons une fonction de hachage simple pour garantir une couleur unique par numéro de département
 # tout en gardant une teinte pastel.
 
 def get_departement_color(code_departement):
-    """Retourne une couleur pastel très transparente basée sur le code du département."""
+    """Retourne une couleur pastel très transparente basée sur le code du département (Alpha 51)."""
     # Convertit le code (ex: '75' ou '2A') en un nombre
     try:
         if code_departement.isdigit():
@@ -66,8 +66,8 @@ def get_departement_color(code_departement):
     G = 100 + (num * 23 % 155)
     B = 100 + (num * 31 % 155)
     
-    # Opacité très réduite (alpha = 60 sur 255) pour l'effet "très transparent"
-    ALPHA = 60
+    # Opacité très réduite (alpha = 51 sur 255, soit ~20% d'opacité)
+    ALPHA = 51 
     
     return [R, G, B, ALPHA]
 
@@ -383,8 +383,8 @@ with col_content:
                     data=departement_labels_df,
                     get_position=['lon', 'lat'],
                     get_text='code',
-                    get_color=[50, 50, 50, 255], # Gris foncé pour le numéro
-                    get_size=16, # Taille du texte
+                    get_color=[0, 0, 0, 255], # Noir/Gris très foncé pour le numéro
+                    get_size=24, # Taille augmentée pour la visibilité
                     # Centrage du texte sur la coordonnée
                     get_alignment_baseline="'middle'",
                     get_text_anchor="'middle'",
