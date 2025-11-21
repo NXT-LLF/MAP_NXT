@@ -328,14 +328,14 @@ with col_content:
         # La fonction calculate_polygon_coords est maintenant corrigée
         circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000) 
         
-        # 2) CHANGEMENT: Augmentation de l'épaisseur de la bordure (get_line_width_min_pixels=4)
+        # 2) CHANGEMENT: Augmentation de l'épaisseur de la bordure à 8 pixels-écran
         circle_layer = pdk.Layer(
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
                 "fill_color": COLOR_CIRCLE_FILL, 
                 "line_color": COLOR_ANCHOR, 
-                "line_width_min_pixels": 4, # <--- CHANGEMENT ICI (Épaisseur plus grande)
+                "line_width_min_pixels": 8, # <--- CHANGEMENT ICI (très épais)
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -397,16 +397,11 @@ with col_content:
         layers.append(ref_point_layer)
         
         
-        # 1) CORRECTION DU TEMPLATE DU TOOLTIP (HTML)
+        # 1) CORRECTION DU TEMPLATE DU TOOLTIP (Nettoyage et compactage pour éviter les erreurs de rendu)
         tooltip_data = {
             "html": """
-                {% if object.nom %}
-                    <!-- Ville (Scatterplot ou Point d'Ancrage) -->
-                    <b>{{ object.nom }}</b><br/>
-                    CP: {{ object.code_postal }}
-                    {% if object.distance_km %}
-                        <br/>Distance: {{ object.distance_km }} km
-                    {% endif %}
+                {% if object.nom %}<b>{{ object.nom }}</b><br>CP: {{ object.code_postal }}
+                    {% if object.distance_km %}<br>Distance: {{ object.distance_km }} km{% endif %}
                 {% endif %}
             """,
             "style": {"backgroundColor": "rgba(0, 0, 0, 0.8)", "color": "white"}
