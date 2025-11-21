@@ -39,9 +39,10 @@ div[data-testid="stTextarea"] > label {
 
 
 # Définition des couleurs personnalisées
-COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage)
+COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage et bordure de rayon)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
-COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
+# ANCIENNES couleurs de rayon (maintenant mises à jour)
+COLOR_CIRCLE_LINE = COLOR_ANCHOR      # Utilisera la couleur #FD002D pour la bordure
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
 
 # --- AJOUTS POUR LES DÉPARTEMENTS ---
@@ -328,12 +329,14 @@ with col_content:
         # La fonction calculate_polygon_coords est maintenant corrigée
         circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000) 
         
+        # 2) CHANGEMENT: Utilisation de COLOR_ANCHOR pour la bordure du cercle
         circle_layer = pdk.Layer(
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
                 "fill_color": COLOR_CIRCLE_FILL, 
-                "line_color": COLOR_CIRCLE_LINE, 
+                "line_color": COLOR_ANCHOR, # <--- CHANGEMENT ICI (bordure #FD002D)
+                "line_width_min_pixels": 2, # Pour rendre la bordure plus visible
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -345,7 +348,8 @@ with col_content:
         # Rétablissement du point d'ancrage
         ref_point_layer = pdk.Layer(
             "ScatterplotLayer",
-            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat, "nom": ref_data["nom"], "code_postal": ref_cp_display}]), # Ajout des propriétés pour le tooltip
+            # Ajout des propriétés "nom" et "code_postal" pour le tooltip du point de référence
+            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat, "nom": ref_data["nom"], "code_postal": ref_cp_display}]), 
             get_position='[lon, lat]',
             get_radius=500,
             get_fill_color=COLOR_ANCHOR, # FD002D
@@ -369,7 +373,7 @@ with col_content:
                 get_fill_color="properties.fill_color", 
                 get_line_color=[150, 150, 150, 200], 
                 get_line_width_min_pixels=1,
-                pickable=False # CHANGEMENT: Désactivation de l'interactivité pour le survol
+                pickable=False 
             )
             layers.append(departement_layer) 
 
@@ -380,8 +384,8 @@ with col_content:
                     data=departement_labels_df,
                     get_position=['lon', 'lat'],
                     get_text='code',
-                    get_color=[0, 0, 0, 255], # Noir/Gris très foncé pour le numéro
-                    get_size=24, # Taille augmentée pour la visibilité
+                    get_color=[0, 0, 0, 255], 
+                    get_size=24, 
                     # Centrage du texte sur la coordonnée
                     get_alignment_baseline="'middle'",
                     get_text_anchor="'middle'",
@@ -436,6 +440,8 @@ with col_content:
             communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
             communes_filtrees = communes_filtrees.sort_values("distance_km")
 
+            # 1) CORRECTION: Le DataFrame communes_filtrees a déjà les colonnes 'nom' et 'code_postal'
+            # Le ScatterplotLayer les rend donc disponibles pour le tooltip.
             scatter_layer_result = pdk.Layer(
                 "ScatterplotLayer",
                 data=communes_filtrees,
