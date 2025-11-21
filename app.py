@@ -39,114 +39,10 @@ div[data-testid="stTextarea"] > label {
 
 
 # Définition des couleurs personnalisées
-COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage et bordure de rayon)
+COLOR_ANCHOR = [253, 0, 45, 255]      # #FD002D (Point d'ancrage)
 COLOR_CITIES = [200, 50, 120, 180]    # #c83278 (Villes filtrées)
-COLOR_CIRCLE_LINE = COLOR_ANCHOR      # Utilisera la couleur #FD002D pour la bordure
+COLOR_CIRCLE_LINE = [80, 5, 35, 200]    # #500523 (Rayon contour)
 COLOR_CIRCLE_FILL = [240, 200, 175, 50]  # #f0c8af (Rayon remplissage)
-
-# --- AJOUTS POUR LES DÉPARTEMENTS ---
-# Couleurs pastel très transparentes pour les départements (alpha = 51/255 soit ~20% d'opacité)
-
-def get_departement_color(code_departement):
-    """Retourne une couleur pastel très transparente basée sur le code du département (Alpha 51)."""
-    # Convertit le code (ex: '75' ou '2A') en un nombre
-    try:
-        if code_departement.isdigit():
-            num = int(code_departement)
-        else:
-            # Pour la Corse (2A, 2B), ou les DOM-TOM
-            num = sum(ord(c) for c in code_departement)
-    except:
-        num = 0
-    
-    # Génère des composantes R, G, B basées sur le nombre, pour un effet de couleur différent
-    R = 100 + (num * 17 % 155)  # Entre 100 et 255
-    G = 100 + (num * 23 % 155)
-    B = 100 + (num * 31 % 155)
-    
-    # Opacité très réduite (alpha = 51 sur 255, soit ~20% d'opacité)
-    ALPHA = 51 
-    
-    return [R, G, B, ALPHA]
-
-def get_all_coords_flat(coordinates):
-    """Extrait toutes les coordonnées [lon, lat] d'une géométrie (Polygon/MultiPolygon)."""
-    all_lons = []
-    all_lats = []
-
-    # Simple function to process a list of rings (like in a Polygon)
-    def process_rings(rings):
-        for ring in rings:
-            all_lons.extend([p[0] for p in ring])
-            all_lats.extend([p[1] for p in ring])
-
-    # Handle MultiPolygon (list of Polygons)
-    if isinstance(coordinates[0][0][0], list): # Check if it's a MultiPolygon structure
-        for polygon in coordinates:
-            process_rings(polygon)
-    # Handle Polygon (list of rings)
-    else:
-        process_rings(coordinates)
-        
-    return all_lons, all_lats
-
-@st.cache_data
-def get_geojson_departements():
-    """
-    Charge le GeoJSON des départements, calcule les couleurs et les centroïdes
-    approximatifs pour l'affichage des numéros.
-    """
-    geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson"
-    
-    try:
-        r = requests.get(geojson_url, timeout=30)
-        r.raise_for_status()
-        
-        geojson_data = r.json()
-        departement_labels = [] # Pour stocker les données du TextLayer (numéros)
-        
-        # Ajout de la couleur à chaque Feature pour PyDeck
-        for feature in geojson_data['features']:
-            code_dept = feature['properties']['code']
-            feature['properties']['fill_color'] = get_departement_color(code_dept)
-            
-            # Calcul du centroïde approximatif (centre de la boîte englobante) pour le label
-            coords = feature['geometry']['coordinates']
-            lon_center, lat_center = None, None
-            
-            all_lons, all_lats = get_all_coords_flat(coords)
-
-            if all_lons:
-                # Centre de la boîte englobante (approximation)
-                lon_center = (min(all_lons) + max(all_lons)) / 2
-                lat_center = (min(all_lats) + max(all_lats)) / 2
-                
-                # Correction manuelle pour la Corse (trop loin de son centroïde)
-                # Cette correction est spécifique à cette source de GeoJSON
-                if code_dept == '2A':
-                    lon_center = 8.8
-                    lat_center = 41.9
-                elif code_dept == '2B':
-                    lon_center = 9.2
-                    lat_center = 42.5
-
-                departement_labels.append({
-                    'code': code_dept,
-                    'lon': lon_center,
-                    'lat': lat_center
-                })
-            
-        # Retourne le GeoJSON coloré ET un DataFrame pour les labels de texte
-        return geojson_data, pd.DataFrame(departement_labels)
-        
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erreur de connexion pour charger le GeoJSON des départements : {e}")
-        return None, pd.DataFrame()
-
-# Chargement du GeoJSON et du DataFrame de labels au démarrage
-departements_geojson, departement_labels_df = get_geojson_departements()
-# --- FIN DES AJOUTS DÉPARTEMENTS ---
-
 
 # --- FONCTIONS DE GÉOMÉTRIE ET PERFORMANCE ---
 
@@ -243,7 +139,7 @@ with col_content:
     st.markdown(
         """
         <div style='display: flex; align-items: center; flex-direction: column; text-align: center;'>
-            <img src='https://scontent-cdg4-3.xx.fbcdn.net/v/t39.30808-6/507850690_1145471717619181_7394680818477187875_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=y8xhIjr4YPgQ7kNvwGej3VU&_nc_oc=AdmPx93F-yyeU7-IOLcFvujNGXaz4mBlEMOCpexpvcGHKk1LZN71Dkto3B0EfFPQWXo&_nc_zt=23&_nc_ht=scontent-cdg4-3.xx&_nc_gid=cU5o6AToXnvJleEE01KUTA&oh=00_Afj4ibgV5zJ5TigLCUVRQUL7JrJj5YJIlxQEr6FDF3Ecwg&oe=6923B197' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
+            <img src='https://scontent-cdg4-3.xx.fbcdn.net/v/t39.30808-6/507850690_1145471717619181_7394680818477187875_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=y8xhIjr4YPgQ7kNvwGej3VU&_nc_oc=AdmPx93F-yyeU7-IOLcFvujNGXaz4mBlEMOCpexvxcGHKk1LZN71Dkto3B0EfFPgQXo&_nc_zt=23&_nc_ht=scontent-cdg4-3.xx&_nc_gid=cU5o6AToXnvJleEE01KUTA&oh=00_Afj4ibgV5zJ5TigLCUVRQUL7JrJj5YJIlxQEr6FDF3Ecwg&oe=6923B197' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
             <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
         </div>
         """,
@@ -320,22 +216,17 @@ with col_content:
         st.subheader("Définir le rayon et visualiser la zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
-        # Checkbox pour afficher ou masquer la couche des départements
-        show_departements = st.checkbox("Afficher les départements en arrière-plan", value=False)
-        
         # --- COUCHES DE BASE ---
         
         # La fonction calculate_polygon_coords est maintenant corrigée
         circle_polygon = calculate_polygon_coords(ref_coords, rayon * 1000) 
         
-        # 2) CHANGEMENT: Augmentation de l'épaisseur de la bordure à 8 pixels-écran
         circle_layer = pdk.Layer(
             "PolygonLayer",
             data=[{
                 "polygon": circle_polygon,
                 "fill_color": COLOR_CIRCLE_FILL, 
-                "line_color": COLOR_ANCHOR, 
-                "line_width_min_pixels": 8, # <--- CHANGEMENT ICI (très épais)
+                "line_color": COLOR_CIRCLE_LINE, 
             }],
             get_polygon="polygon",
             get_fill_color="fill_color",
@@ -344,68 +235,19 @@ with col_content:
             filled=True,
         )
 
-        # Rétablissement du point d'ancrage
+        # Rétablissement du point d'ancrage (Point 2)
         ref_point_layer = pdk.Layer(
             "ScatterplotLayer",
-            # Ajout des propriétés "nom" et "code_postal" pour le tooltip du point de référence
-            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat, "nom": ref_data["nom"], "code_postal": ref_cp_display}]), 
+            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
             get_position='[lon, lat]',
             get_radius=500,
             get_fill_color=COLOR_ANCHOR, # FD002D
             pickable=True, 
+            tooltip={"text": f"Ancrage: {ville_input}\nCP: {ref_cp_display}"}
         )
 
-        layers = [] 
-        
-        # --- COUCHE : CONTOUR, COULEURS ET NUMÉROS DES DÉPARTEMENTS ---
-        # CONDITIONNELLEMENT ajoutée si la checkbox est cochée
-        if departements_geojson and show_departements:
-            # 1. Couche du GeoJSON (remplissage et contour)
-            departement_layer = pdk.Layer(
-                "GeoJsonLayer",
-                data=departements_geojson,
-                opacity=1.0, 
-                stroked=True,
-                filled=True,
-                extruded=False,
-                wireframe=True,
-                get_fill_color="properties.fill_color", 
-                get_line_color=[150, 150, 150, 200], 
-                get_line_width_min_pixels=1,
-                pickable=False 
-            )
-            layers.append(departement_layer) 
-
-            # 2. Couche de Texte (numéros de département)
-            if not departement_labels_df.empty:
-                text_layer = pdk.Layer(
-                    "TextLayer",
-                    data=departement_labels_df,
-                    get_position=['lon', 'lat'],
-                    get_text='code',
-                    get_color=[0, 0, 0, 255], 
-                    get_size=24, 
-                    # Centrage du texte sur la coordonnée
-                    get_alignment_baseline="'middle'",
-                    get_text_anchor="'middle'",
-                    pickable=False
-                )
-                layers.append(text_layer)
-            
-        # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les départements
-        layers.append(circle_layer)
-        layers.append(ref_point_layer)
-        
-        
-        # 1) CORRECTION DU TEMPLATE DU TOOLTIP (Nettoyage et compactage pour éviter les erreurs de rendu)
-        tooltip_data = {
-            "html": """
-                {% if object.nom %}<b>{{ object.nom }}</b><br>CP: {{ object.code_postal }}
-                    {% if object.distance_km %}<br>Distance: {{ object.distance_km }} km{% endif %}
-                {% endif %}
-            """,
-            "style": {"backgroundColor": "rgba(0, 0, 0, 0.8)", "color": "white"}
-        }
+        layers = [circle_layer, ref_point_layer]
+        tooltip_data = {"html": f"<b>Référence: {ville_input}</b><br/>CP: {ref_cp_display}"}
 
         view_state = pdk.ViewState(
             latitude=ref_lat,
@@ -434,8 +276,6 @@ with col_content:
             communes_filtrees["distance_km"] = communes_filtrees["distance_km"].round(1)
             communes_filtrees = communes_filtrees.sort_values("distance_km")
 
-            # Le DataFrame communes_filtrees contient déjà 'nom', 'code_postal' et 'distance_km'
-            # Le ScatterplotLayer les rend disponibles pour le tooltip.
             scatter_layer_result = pdk.Layer(
                 "ScatterplotLayer",
                 data=communes_filtrees,
@@ -443,10 +283,13 @@ with col_content:
                 get_radius=500,
                 get_fill_color=COLOR_CITIES,
                 pickable=True, 
+                # Tooltip affiche Nom et Code Postal 
+                tooltip={"text": "{nom} \n Code Postal: {code_postal}"} 
             )
             
             layers.append(scatter_layer_result)
-            
+            tooltip_data = {"html": "<b>{nom}</b><br/>CP: {code_postal}", 
+                            "style": {"backgroundColor": "#c83278", "color": "white"}}
         
         # Affichage de la carte unique (Map au-dessus)
         st.subheader("Zone de chalandise")
@@ -454,8 +297,7 @@ with col_content:
             layers=layers,
             initial_view_state=view_state,
             map_style='light',
-            # Le Tooltip dynamique gère toutes les couches pickable
-            tooltip=tooltip_data 
+            tooltip=tooltip_data
         ))
         
         # --- BOUTON DE LANCEMENT (Bouton en dessous de la map) ---
