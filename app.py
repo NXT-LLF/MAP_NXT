@@ -345,7 +345,7 @@ with col_content:
         # Rétablissement du point d'ancrage
         ref_point_layer = pdk.Layer(
             "ScatterplotLayer",
-            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat}]),
+            data=pd.DataFrame([{"lon": ref_lon, "lat": ref_lat, "nom": ref_data["nom"], "code_postal": ref_cp_display}]), # Ajout des propriétés pour le tooltip
             get_position='[lon, lat]',
             get_radius=500,
             get_fill_color=COLOR_ANCHOR, # FD002D
@@ -369,7 +369,7 @@ with col_content:
                 get_fill_color="properties.fill_color", 
                 get_line_color=[150, 150, 150, 200], 
                 get_line_width_min_pixels=1,
-                pickable=True # CHANGEMENT: Activation de l'interactivité pour le survol
+                pickable=False # CHANGEMENT: Désactivation de l'interactivité pour le survol
             )
             layers.append(departement_layer) 
 
@@ -394,14 +394,10 @@ with col_content:
         layers.append(ref_point_layer)
         
         
-        # CHANGEMENT: Définition d'un Tooltip unique et robuste
-        # Template ajusté pour afficher uniquement "Nom = Code" pour les départements
+        # CHANGEMENT: Tooltip simplifié pour gérer UNIQUEMENT les points (villes)
         tooltip_data = {
             "html": """
-                {% if object.properties %}
-                    <!-- Département (GeoJson): Nom = Code -->
-                    <b>{{ object.properties.nom }}</b> = {{ object.properties.code }}
-                {% elif object.nom %}
+                {% if object.nom %}
                     <!-- Ville (Scatterplot ou Point d'Ancrage) -->
                     <b>{{ object.nom }}</b><br/>
                     CP: {{ object.code_postal }}
