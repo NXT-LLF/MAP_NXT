@@ -70,11 +70,34 @@ def get_departement_color(code_departement):
     ALPHA = 60
     
     return [R, G, B, ALPHA]
-    
+
+def get_all_coords_flat(coordinates):
+    """Extrait toutes les coordonnées [lon, lat] d'une géométrie (Polygon/MultiPolygon)."""
+    all_lons = []
+    all_lats = []
+
+    # Simple function to process a list of rings (like in a Polygon)
+    def process_rings(rings):
+        for ring in rings:
+            all_lons.extend([p[0] for p in ring])
+            all_lats.extend([p[1] for p in ring])
+
+    # Handle MultiPolygon (list of Polygons)
+    if isinstance(coordinates[0][0][0], list): # Check if it's a MultiPolygon structure
+        for polygon in coordinates:
+            process_rings(polygon)
+    # Handle Polygon (list of rings)
+    else:
+        process_rings(coordinates)
+        
+    return all_lons, all_lats
+
 @st.cache_data
 def get_geojson_departements():
-    """Charge le GeoJSON des départements français (pour les contours et les couleurs)."""
-    # Utilisation du GeoJSON des départements
+    """
+    Charge le GeoJSON des départements, calcule les couleurs et les centroïdes
+    approximatifs pour l'affichage des numéros.
+    """
     geojson_url = "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson"
     
     try:
@@ -82,20 +105,48 @@ def get_geojson_departements():
         r.raise_for_status()
         
         geojson_data = r.json()
+        departement_labels = [] # Pour stocker les données du TextLayer (numéros)
         
         # Ajout de la couleur à chaque Feature pour PyDeck
         for feature in geojson_data['features']:
             code_dept = feature['properties']['code']
             feature['properties']['fill_color'] = get_departement_color(code_dept)
             
-        return geojson_data
+            # Calcul du centroïde approximatif (centre de la boîte englobante) pour le label
+            coords = feature['geometry']['coordinates']
+            lon_center, lat_center = None, None
+            
+            all_lons, all_lats = get_all_coords_flat(coords)
+
+            if all_lons:
+                # Centre de la boîte englobante (approximation)
+                lon_center = (min(all_lons) + max(all_lons)) / 2
+                lat_center = (min(all_lats) + max(all_lats)) / 2
+                
+                # Correction manuelle pour la Corse (trop loin de son centroïde)
+                # Cette correction est spécifique à cette source de GeoJSON
+                if code_dept == '2A':
+                    lon_center = 8.8
+                    lat_center = 41.9
+                elif code_dept == '2B':
+                    lon_center = 9.2
+                    lat_center = 42.5
+
+                departement_labels.append({
+                    'code': code_dept,
+                    'lon': lon_center,
+                    'lat': lat_center
+                })
+            
+        # Retourne le GeoJSON coloré ET un DataFrame pour les labels de texte
+        return geojson_data, pd.DataFrame(departement_labels)
         
     except requests.exceptions.RequestException as e:
         st.error(f"Erreur de connexion pour charger le GeoJSON des départements : {e}")
-        return None
+        return None, pd.DataFrame()
 
-# Chargement du GeoJSON des départements au démarrage
-departements_geojson = get_geojson_departements()
+# Chargement du GeoJSON et du DataFrame de labels au démarrage
+departements_geojson, departement_labels_df = get_geojson_departements()
 # --- FIN DES AJOUTS DÉPARTEMENTS ---
 
 
@@ -271,7 +322,7 @@ with col_content:
         st.subheader("Définir le rayon et visualiser la zone")
         rayon = st.slider("Rayon de recherche (km) :", 1, 50, 5, key="rayon_slider")
         
-        # NOUVEAU: Checkbox pour afficher ou masquer la couche des départements
+        # Checkbox pour afficher ou masquer la couche des départements
         show_departements = st.checkbox("Afficher les départements en arrière-plan", value=False)
         
         # --- COUCHES DE BASE ---
@@ -306,26 +357,40 @@ with col_content:
 
         layers = [] 
         
-        # --- COUCHE : CONTOUR ET COULEURS DES DÉPARTEMENTS (arrière-plan) ---
+        # --- COUCHE : CONTOUR, COULEURS ET NUMÉROS DES DÉPARTEMENTS ---
         # CONDITIONNELLEMENT ajoutée si la checkbox est cochée
         if departements_geojson and show_departements:
+            # 1. Couche du GeoJSON (remplissage et contour)
             departement_layer = pdk.Layer(
                 "GeoJsonLayer",
                 data=departements_geojson,
-                opacity=1.0, # L'opacité est gérée par la couleur [R, G, B, A] du GeoJSON
+                opacity=1.0, 
                 stroked=True,
                 filled=True,
                 extruded=False,
                 wireframe=True,
-                # Utilisation des couleurs très transparentes calculées dans le GeoJSON
                 get_fill_color="properties.fill_color", 
-                get_line_color=[150, 150, 150, 200], # Gris plus clair
+                get_line_color=[150, 150, 150, 200], 
                 get_line_width_min_pixels=1,
-                # Le pickable reste à False pour éviter l'overlay sur toute la carte
                 pickable=False 
             )
-            # Cette couche doit être la première pour être en arrière-plan
             layers.append(departement_layer) 
+
+            # 2. Couche de Texte (numéros de département)
+            if not departement_labels_df.empty:
+                text_layer = pdk.Layer(
+                    "TextLayer",
+                    data=departement_labels_df,
+                    get_position=['lon', 'lat'],
+                    get_text='code',
+                    get_color=[50, 50, 50, 255], # Gris foncé pour le numéro
+                    get_size=16, # Taille du texte
+                    # Centrage du texte sur la coordonnée
+                    get_alignment_baseline="'middle'",
+                    get_text_anchor="'middle'",
+                    pickable=False
+                )
+                layers.append(text_layer)
             
         # Ajout du cercle de rayon et du point d'ancrage PAR-DESSUS les départements
         layers.append(circle_layer)
