@@ -139,7 +139,7 @@ with col_content:
     st.markdown(
         """
         <div style='display: flex; align-items: center; flex-direction: column; text-align: center;'>
-            <img src='https://scontent-cdg4-3.xx.fbcdn.net/v/t39.30808-6/507850690_1145471717619181_7394680818477187875_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=y8xhIjr4YPgQ7kNvwGej3VU&_nc_oc=AdmPx93F-yyeU7-IOLcFvujNGXaz4mBlEMOCpexvxcGHKk1LZN71Dkto3B0EfFPgQXo&_nc_zt=23&_nc_ht=scontent-cdg4-3.xx&_nc_gid=cU5o6AToXnvJleEE01KUTA&oh=00_Afj4ibgV5zJ5TigLCUVRQUL7JrJj5YJIlxQEr6FDF3Ecwg&oe=6923B197' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
+            <img src='https://bddnxt.my.canva.site/_assets/media/442de89eb7b0878575cdb604c5767b62.png' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
             <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
         </div>
         """,
