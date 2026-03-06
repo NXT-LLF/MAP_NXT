@@ -139,7 +139,7 @@ with col_content:
     st.markdown(
         """
         <div style='display: flex; align-items: center; flex-direction: column; text-align: center;'>
-            <img src='https://bddnxt.my.canva.site/_assets/media/442de89eb7b0878575cdb604c5767b62.png' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
+            <img src='https://bddnxt.my.canva.site/_assets/media/63b26998b4ee5e63d1090588fcadb1e0.png' style='width:60px; margin-right:0px; margin-bottom: 10px;'>
             <h1 style='color:#ff002d; margin:0;'>MAP PÔLE PERF & PROCESS</h1>
         </div>
         """,
